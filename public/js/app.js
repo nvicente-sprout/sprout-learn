@@ -402,6 +402,11 @@ function handleRoute() {
     navigate(currentUser.isAdmin && !adminViewingAsLearner ? '/admin/dashboard' : '/learner/dashboard');
     return;
   }
+  // Force profile completion if no team set
+  if (currentUser && !currentUser.teamId) {
+    renderCompleteProfile();
+    return;
+  }
   // Block learner routes for non-admin/non-preview users trying to access admin routes
   if (currentUser && !currentUser.isAdmin && hash.startsWith('/admin')) {
     navigate('/learner/dashboard'); return;
