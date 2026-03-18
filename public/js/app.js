@@ -307,17 +307,13 @@ async function handleAuthUser(authUser) {
     return;
   }
 
-  // Upsert user in DB
-  const existing = allUsers.find(u => u.id === authUser.id);
-  if (!existing) {
+  // Insert new user only if they don't exist yet (never overwrite existing record)
+  const { data: existingUser } = await sb.from('users').select('id').eq('id', authUser.id).maybeSingle();
+  if (!existingUser) {
     const name = authUser.user_metadata?.full_name || email.split('@')[0];
-    const color = USER_COLORS[allUsers.length % USER_COLORS.length];
-    const { error } = await sb.from('users').upsert({
+    await sb.from('users').insert({
       id: authUser.id, email, name, role: 'Alliance Manager', is_admin: false,
     });
-    if (!error) {
-      allUsers.push({ id: authUser.id, email, name, role: 'Alliance Manager', isAdmin: false, color });
-    }
   }
 
   await loadData();
