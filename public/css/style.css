@@ -202,6 +202,14 @@ img { max-width: 100%; }
   font-size: .75rem; font-weight: 700; color: var(--primary); flex-shrink: 0;
 }
 .topbar-name { font-size: .83rem; font-weight: 500; color: rgba(255,255,255,.85); }
+.btn-view-toggle {
+  font-size: .75rem; font-weight: 600; padding: .3rem .75rem;
+  border-radius: 20px; border: 1.5px solid rgba(255,255,255,.4);
+  background: rgba(255,255,255,.12); color: white; cursor: pointer;
+  transition: background var(--transition);
+  white-space: nowrap;
+}
+.btn-view-toggle:hover { background: rgba(255,255,255,.22); }
 .topbar-logout {
   background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2);
   color: rgba(255,255,255,.8); padding: .28rem .7rem;

@@ -41,6 +41,7 @@ let courses = [];
 // ─── State ────────────────────────────────────────────────────────────────────
 let currentUser   = null;
 let currentRoute  = '';
+let adminViewingAsLearner = false;
 let assignments   = {};  // { userId: [courseId, ...] }
 let progress      = {};  // { 'userId_courseId': { currentSlide, completed, score, passed } }
 let questions     = {};  // { courseId: [...] }
@@ -332,6 +333,7 @@ async function googleLogin() {
 async function logout() {
   await sb.auth.signOut();
   currentUser = null;
+  adminViewingAsLearner = false;
   navigate('/login');
 }
 
@@ -375,8 +377,12 @@ function handleRoute() {
     return;
   }
   if (currentUser && hash === '/login') {
-    navigate(currentUser.isAdmin ? '/admin/dashboard' : '/learner/dashboard');
+    navigate(currentUser.isAdmin && !adminViewingAsLearner ? '/admin/dashboard' : '/learner/dashboard');
     return;
+  }
+  // Block learner routes for non-admin/non-preview users trying to access admin routes
+  if (currentUser && !currentUser.isAdmin && hash.startsWith('/admin')) {
+    navigate('/learner/dashboard'); return;
   }
 
   if (hash === '/login')               { renderLogin(); return; }
@@ -423,8 +429,13 @@ function logout() {
 }
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
+function toggleLearnerView() {
+  adminViewingAsLearner = !adminViewingAsLearner;
+  navigate(adminViewingAsLearner ? '/learner/dashboard' : '/admin/dashboard');
+}
+
 function renderLayout() {
-  const isAdmin = currentUser?.isAdmin;
+  const isAdmin = currentUser?.isAdmin && !adminViewingAsLearner;
   const navLinks = isAdmin ? [
     { href: '/admin/dashboard',   label: 'Dashboard',     icon: iconHome() },
     { href: '/admin/courses',     label: 'Courses',       icon: iconCourses() },
@@ -451,6 +462,7 @@ function renderLayout() {
           </a>
           <nav class="header-nav">${tabs}</nav>
           <div class="header-user">
+            ${currentUser.isAdmin ? `<button class="btn-view-toggle" onclick="toggleLearnerView()">${adminViewingAsLearner ? '⚙️ Admin View' : '👁 Learner View'}</button>` : ''}
             <div class="topbar-avatar" style="background:${currentUser.color}">${initials(currentUser.name)}</div>
             <span class="topbar-name">${esc(currentUser.name.split(' ')[0])}</span>
             <button class="topbar-logout" onclick="logout()">Logout</button>
@@ -713,7 +725,6 @@ function showUploadModal() {
             <div class="upload-option-title">🤖 AI Generate</div>
             <div class="upload-option-desc">Gemini reads the PDF and auto-generates 12 questions</div>
           </div>
-          <button class="btn btn-outline btn-sm" id="test-api-btn" onclick="event.preventDefault();testGeminiAPI()" style="flex-shrink:0;font-size:.72rem">Test API Key</button>
         </label>
         <label class="upload-option" id="opt-manual">
           <input type="radio" name="upload-mode" value="manual" onchange="selectUploadMode('manual')" />
@@ -886,29 +897,6 @@ async function submitUpload() {
 }
 
 // ─── Gemini API Test ─────────────────────────────────────────────────────────
-async function testGeminiAPI() {
-  const btn = document.getElementById('test-api-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Testing…'; }
-  try {
-    const model = await autoDetectGeminiModel();
-    if (!model) throw new Error('No model found for this key');
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: 'Say exactly: GEMINI OK' }] }] }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(`${res.status}: ${data?.error?.message || res.statusText}`);
-    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '(no reply)';
-    toast(`✅ ${model} works! Reply: "${reply}"`, 'success');
-    if (btn) { btn.textContent = '✅ API works'; btn.disabled = false; }
-  } catch(err) {
-    console.error('Gemini test failed:', err);
-    toast(`❌ ${err.message}`, 'error');
-    if (btn) { btn.textContent = `❌ Failed`; btn.disabled = false; }
-  }
-}
 
 // ─── AI Question Generation ───────────────────────────────────────────────────
 async function generateQuestionsAI(text, courseTitle) {
