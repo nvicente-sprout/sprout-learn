@@ -640,6 +640,17 @@ img { max-width: 100%; }
 .assess-breakdown-row.wrong .assess-breakdown-icon { color: #c62828; }
 .assess-breakdown-q { color: var(--text); line-height: 1.4; }
 
+/* ─── Settings ────────────────────────────────────────────────────────────── */
+.settings-section { background: var(--card-bg); border: 1.5px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+.settings-section-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); }
+.settings-list { display: flex; flex-direction: column; }
+.settings-list-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: .85rem 1.25rem; border-bottom: 1px solid var(--border);
+  animation: fadeUp .25s ease both;
+}
+.settings-list-item:last-child { border-bottom: none; }
+
 /* ─── Certificate Modal ───────────────────────────────────────────────────── */
 .modal-overlay {
   position: fixed; inset: 0;

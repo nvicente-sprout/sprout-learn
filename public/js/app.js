@@ -54,6 +54,8 @@ let assessmentAnswers  = [];
 let assessmentCurrentQ = 0;
 let assessmentCourseId = null;
 
+let allTeams = [];
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function esc(str) {
   return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -254,12 +256,13 @@ function courseToRow(c) {
 async function loadData() {
   showLoader('Loading Sprout Learn', 'Fetching your data');
   try {
-    const [cRes, qRes, aRes, pRes, uRes] = await Promise.all([
+    const [cRes, qRes, aRes, pRes, uRes, tRes] = await Promise.all([
       sb.from('courses').select('*').order('created_at', { ascending: false }),
       sb.from('questions').select('*'),
       sb.from('assignments').select('*'),
       sb.from('progress').select('*'),
       sb.from('users').select('*').order('created_at', { ascending: true }),
+      sb.from('teams').select('*').order('name'),
     ]);
 
     if (cRes.error) console.error('courses load error:', cRes.error.message);
@@ -267,13 +270,16 @@ async function loadData() {
     if (aRes.error) console.error('assignments load error:', aRes.error.message);
     if (pRes.error) console.error('progress load error:', pRes.error.message);
     if (uRes.error) console.error('users load error:', uRes.error.message);
+    if (tRes.error) console.error('teams load error:', tRes.error.message);
 
     const cData = cRes.data, qData = qRes.data, aData = aRes.data,
           pData = pRes.data, uData = uRes.data;
 
+    allTeams = tRes.data || [];
+
     allUsers = uData ? uData.map((u, i) => ({
       id: u.id, email: u.email, name: u.name || u.email.split('@')[0],
-      role: u.role, isAdmin: u.is_admin,
+      role: u.role, isAdmin: u.is_admin, teamId: u.team_id || null,
       color: USER_COLORS[i % USER_COLORS.length],
     })) : [];
 
@@ -334,6 +340,7 @@ async function handleAuthUser(authUser) {
   await loadData();
   currentUser = allUsers.find(u => u.id === authUser.id);
   if (!currentUser) { currentUser = null; navigate('/login'); return; }
+  if (!currentUser.teamId) { renderCompleteProfile(); return; }
   navigate(currentUser.isAdmin ? '/admin/dashboard' : '/learner/dashboard');
 }
 
@@ -410,8 +417,9 @@ function handleRoute() {
 
   if (hash === '/admin/dashboard')     renderAdminDashboard();
   else if (hash === '/admin/courses')  renderAdminCourses();
-  else if (hash === '/admin/team')     renderAdminTeam();
+  else if (hash === '/admin/team')      renderAdminTeam();
   else if (hash === '/admin/leaderboard') renderLeaderboard(true);
+  else if (hash === '/admin/settings')  renderAdminSettings();
   else if (hash === '/learner/dashboard')  renderLearnerDashboard();
   else if (hash === '/learner/library')    renderLearnerLibrary();
   else if (hash === '/learner/my-learning') renderMyLearning();
@@ -438,6 +446,51 @@ function renderLogin() {
     </div>`;
 }
 
+function renderCompleteProfile() {
+  document.getElementById('app').innerHTML = `
+    <div class="login-page">
+      <div class="login-card" style="max-width:420px;text-align:left">
+        <img src="assets/logos/sproutsol-logo-01.svg" style="height:30px;margin-bottom:1.5rem;display:block" />
+        <h2 style="font-size:1.2rem;font-weight:800;margin-bottom:.25rem">Complete your profile</h2>
+        <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1.5rem">One more step before you get started</p>
+        <div class="form-group">
+          <label class="form-label">Full Name</label>
+          <input class="form-input" value="${esc(currentUser.name)}" disabled style="opacity:.55;cursor:not-allowed" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input class="form-input" value="${esc(currentUser.email)}" disabled style="opacity:.55;cursor:not-allowed" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Job Title</label>
+          <input class="form-input" value="${esc(currentUser.role || '')}" disabled style="opacity:.55;cursor:not-allowed" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Team *</label>
+          ${allTeams.length
+            ? `<select id="profile-team" class="form-select">
+                <option value="">— Select your team —</option>
+                ${allTeams.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}
+              </select>`
+            : `<div style="font-size:.85rem;color:#e65100;padding:.6rem;background:#fff3e0;border-radius:8px">
+                No teams have been set up yet. Contact your admin.
+              </div>`}
+        </div>
+        ${allTeams.length ? `<button class="btn btn-primary" style="width:100%;margin-top:.25rem" onclick="saveProfile()">Save & Continue →</button>` : ''}
+        <button class="btn btn-outline" style="width:100%;margin-top:.5rem" onclick="logout()">Sign out</button>
+      </div>
+    </div>`;
+}
+
+async function saveProfile() {
+  const teamId = document.getElementById('profile-team')?.value;
+  if (!teamId) { toast('Please select your team', 'error'); return; }
+  const { error } = await sb.from('users').update({ team_id: teamId }).eq('id', currentUser.id);
+  if (error) { toast('Save failed: ' + error.message, 'error'); return; }
+  currentUser.teamId = teamId;
+  navigate(currentUser.isAdmin ? '/admin/dashboard' : '/learner/dashboard');
+}
+
 function logout() {
   currentUser = null;
   navigate('/login');
@@ -456,6 +509,7 @@ function renderLayout() {
     { href: '/admin/courses',     label: 'Courses',       icon: iconCourses() },
     { href: '/admin/team',        label: 'Team Progress', icon: iconUsers() },
     { href: '/admin/leaderboard', label: 'Leaderboard',   icon: iconTrophy() },
+    { href: '/admin/settings',    label: 'Settings',      icon: iconSettings() },
   ] : [
     { href: '/learner/dashboard',   label: 'Dashboard',      icon: iconHome() },
     { href: '/learner/library',     label: 'Course Library',  icon: iconCourses() },
@@ -1519,7 +1573,7 @@ function renderAdminTeam() {
               <div class="user-avatar" style="background:${u.color};width:44px;height:44px">${initials(u.name)}</div>
               <div class="member-info">
                 <div class="member-name">${esc(u.name)}</div>
-                <div class="member-role">${esc(u.role)}</div>
+                <div class="member-role">${esc(u.role)}${u.teamId ? ` · ${esc(allTeams.find(t=>t.id===u.teamId)?.name||'')}` : ''}</div>
                 <div style="font-size:.72rem;color:var(--text-muted)">${esc(u.email)}</div>
               </div>
               <span class="badge" style="background:${badgeColor};color:white">${done}/${assigned}</span>
@@ -1606,6 +1660,167 @@ async function saveUserRole(userId) {
   closeModal();
   toast('Saved!');
   renderAdminTeam();
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+function renderAdminSettings() {
+  setTitle('Settings');
+  setMain(`
+    <div class="page-header"><h1>Settings</h1><p>Manage teams and user access</p></div>
+
+    <div class="settings-section">
+      <div class="settings-section-header">
+        <h2 class="section-heading" style="margin:0">Teams</h2>
+        <button class="btn btn-primary btn-sm" onclick="showAddTeamModal()">+ Add Team</button>
+      </div>
+      <div class="settings-list">
+        ${allTeams.length === 0
+          ? `<div class="empty-state" style="padding:1.5rem"><span class="empty-icon">👥</span><p>No teams yet. Add your first team above.</p></div>`
+          : allTeams.map(t => `
+              <div class="settings-list-item">
+                <span style="font-weight:600">${esc(t.name)}</span>
+                <div style="display:flex;gap:.5rem">
+                  <button class="btn btn-outline btn-sm" onclick="showRenameTeamModal('${t.id}','${esc(t.name)}')">✏️ Rename</button>
+                  <button class="btn btn-danger btn-sm" onclick="deleteTeam('${t.id}','${esc(t.name)}')">🗑</button>
+                </div>
+              </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="settings-section" style="margin-top:2rem">
+      <h2 class="section-heading">User Access</h2>
+      <div class="settings-list">
+        ${allUsers.map(u => {
+          const team = allTeams.find(t => t.id === u.teamId);
+          return `<div class="settings-list-item">
+            <div style="display:flex;align-items:center;gap:.75rem;min-width:0">
+              <div class="user-avatar" style="background:${u.color};width:38px;height:38px;font-size:.72rem;flex-shrink:0">${initials(u.name)}</div>
+              <div style="min-width:0">
+                <div style="font-weight:600;font-size:.9rem">${esc(u.name)}</div>
+                <div style="font-size:.74rem;color:var(--text-muted)">${esc(u.email)} · ${team ? esc(team.name) : '<em>No team</em>'}</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:.4rem;align-items:center;flex-shrink:0">
+              ${u.isAdmin ? `<span class="badge badge-done">Admin</span>` : `<span class="badge badge-none">Learner</span>`}
+              ${u.id !== currentUser.id ? `<button class="btn btn-outline btn-sm" onclick="${u.isAdmin ? `demoteUser('${u.id}')` : `promoteUser('${u.id}')`}">${u.isAdmin ? '⬇' : '⬆'}</button>` : ''}
+              <button class="btn btn-outline btn-sm" onclick="showEditUserModal('${u.id}')">✏️</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`);
+}
+
+function showAddTeamModal() {
+  showModal(`
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="gmodal-header"><h2>Add Team</h2><button class="gmodal-close" onclick="closeModal()">✕</button></div>
+      <div class="gmodal-body">
+        <div class="form-group">
+          <label class="form-label">Team Name *</label>
+          <input id="new-team-name" class="form-input" placeholder="e.g. Sales, Engineering, HR" />
+        </div>
+      </div>
+      <div class="gmodal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="addTeam()">Add Team</button>
+      </div>
+    </div>`);
+}
+
+async function addTeam() {
+  const name = document.getElementById('new-team-name')?.value.trim();
+  if (!name) { toast('Please enter a team name', 'error'); return; }
+  const { data, error } = await sb.from('teams').insert({ name }).select().single();
+  if (error) { toast('Failed: ' + error.message, 'error'); return; }
+  allTeams.push(data);
+  allTeams.sort((a, b) => a.name.localeCompare(b.name));
+  closeModal();
+  toast('Team added!');
+  renderAdminSettings();
+}
+
+function showRenameTeamModal(id, currentName) {
+  showModal(`
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="gmodal-header"><h2>Rename Team</h2><button class="gmodal-close" onclick="closeModal()">✕</button></div>
+      <div class="gmodal-body">
+        <div class="form-group">
+          <label class="form-label">Team Name *</label>
+          <input id="rename-team-name" class="form-input" value="${esc(currentName)}" />
+        </div>
+      </div>
+      <div class="gmodal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="renameTeam('${id}')">Save</button>
+      </div>
+    </div>`);
+}
+
+async function renameTeam(id) {
+  const name = document.getElementById('rename-team-name')?.value.trim();
+  if (!name) { toast('Name required', 'error'); return; }
+  const { error } = await sb.from('teams').update({ name }).eq('id', id);
+  if (error) { toast('Failed: ' + error.message, 'error'); return; }
+  const t = allTeams.find(t => t.id === id);
+  if (t) t.name = name;
+  closeModal();
+  toast('Team renamed!');
+  renderAdminSettings();
+}
+
+async function deleteTeam(id, name) {
+  if (!confirm(`Delete team "${name}"? Users in this team will have no team assigned.`)) return;
+  const { error } = await sb.from('teams').delete().eq('id', id);
+  if (error) { toast('Failed: ' + error.message, 'error'); return; }
+  allTeams = allTeams.filter(t => t.id !== id);
+  allUsers.forEach(u => { if (u.teamId === id) u.teamId = null; });
+  toast('Team deleted');
+  renderAdminSettings();
+}
+
+function showEditUserModal(userId) {
+  const u = getUser(userId);
+  if (!u) return;
+  showModal(`
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="gmodal-header"><h2>Edit User</h2><button class="gmodal-close" onclick="closeModal()">✕</button></div>
+      <div class="gmodal-body">
+        <div class="form-group">
+          <label class="form-label">Full Name</label>
+          <input id="eu-name" class="form-input" value="${esc(u.name)}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Job Title</label>
+          <input id="eu-role" class="form-input" value="${esc(u.role)}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Team</label>
+          <select id="eu-team" class="form-select">
+            <option value="">— No team —</option>
+            ${allTeams.map(t => `<option value="${t.id}" ${u.teamId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="gmodal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveUserEdit('${userId}')">Save</button>
+      </div>
+    </div>`);
+}
+
+async function saveUserEdit(userId) {
+  const name   = document.getElementById('eu-name')?.value.trim();
+  const role   = document.getElementById('eu-role')?.value.trim();
+  const teamId = document.getElementById('eu-team')?.value || null;
+  if (!name) { toast('Name required', 'error'); return; }
+  const { error } = await sb.from('users').update({ name, role, team_id: teamId }).eq('id', userId);
+  if (error) { toast('Failed: ' + error.message, 'error'); return; }
+  const u = getUser(userId);
+  if (u) { u.name = name; u.role = role; u.teamId = teamId; }
+  closeModal();
+  toast('Saved!');
+  renderAdminSettings();
 }
 
 // ─── Leaderboard (shared admin/learner) ───────────────────────────────────────
@@ -2237,4 +2452,5 @@ function iconHome()    { return `<svg viewBox="0 0 24 24" fill="none" stroke="cu
 function iconCourses() { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`; }
 function iconUsers()   { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`; }
 function iconTrophy()  { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 9a6 6 0 0 0 12 0"/><line x1="12" y1="15" x2="12" y2="22"/><polyline points="9 22 15 22"/></svg>`; }
-function iconBook()    { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`; }
+function iconBook()     { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`; }
+function iconSettings() { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`; }
