@@ -49,6 +49,11 @@ let viewerPdfDoc  = null;
 let viewerPage    = 1;
 let viewerCourseId = null;
 
+// Assessment state
+let assessmentAnswers  = [];
+let assessmentCurrentQ = 0;
+let assessmentCourseId = null;
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function esc(str) {
   return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -2029,138 +2034,141 @@ function leaveViewer() {
 
 // ─── Assessment ───────────────────────────────────────────────────────────────
 function renderAssessmentPage(courseId) {
-  const course = getCourse(courseId);
-  const qs = questions[courseId] || FALLBACK_QUESTIONS;
+  assessmentCourseId = courseId;
+  assessmentAnswers  = new Array((questions[courseId] || FALLBACK_QUESTIONS).length).fill(undefined);
+  assessmentCurrentQ = 0;
+  showAssessmentQuestion();
+}
+
+function showAssessmentQuestion() {
+  const courseId = assessmentCourseId;
+  const course   = getCourse(courseId);
+  const qs       = questions[courseId] || FALLBACK_QUESTIONS;
+  const i        = assessmentCurrentQ;
+  const q        = qs[i];
+  const total    = qs.length;
+  const answered = assessmentAnswers[i] !== undefined;
+  const isLast   = i === total - 1;
+  const LETTERS  = ['A','B','C','D'];
+
+  const optionsHTML = q.type === 'mc'
+    ? q.options.map((opt, j) => `
+        <button class="assess-opt${assessmentAnswers[i] === j ? ' assess-opt--selected' : ''}"
+          onclick="selectAssessmentAnswer(${j})">
+          <span class="assess-opt-letter">${LETTERS[j]}</span>
+          <span class="assess-opt-text">${esc(opt)}</span>
+        </button>`).join('')
+    : `<button class="assess-opt assess-opt--tf${assessmentAnswers[i] === true ? ' assess-opt--selected' : ''}"
+        onclick="selectAssessmentAnswer('true')">
+        <span class="assess-opt-tf-icon">✓</span><span>True</span>
+      </button>
+      <button class="assess-opt assess-opt--tf${assessmentAnswers[i] === false ? ' assess-opt--selected' : ''}"
+        onclick="selectAssessmentAnswer('false')">
+        <span class="assess-opt-tf-icon">✗</span><span>False</span>
+      </button>`;
+
+  const dots = Array.from({ length: total }, (_, k) => {
+    const cls = k === i ? 'assess-dot assess-dot--current'
+              : assessmentAnswers[k] !== undefined ? 'assess-dot assess-dot--done'
+              : 'assess-dot';
+    return `<span class="${cls}"></span>`;
+  }).join('');
 
   document.getElementById('app').innerHTML = `
-    <div style="min-height:100vh;background:var(--bg);padding:2rem 1rem">
-      <div class="assessment-page">
-        <div style="margin-bottom:1.5rem">
-          <button class="btn btn-outline btn-sm" onclick="navigate('/course/${courseId}')">← Back to Course</button>
+    <div class="assess-shell">
+      <div class="assess-topbar">
+        <button class="btn btn-outline btn-sm" onclick="navigate('/course/${courseId}')">← Back</button>
+        <div class="assess-meta">
+          <span class="assess-course-name">${esc(course?.title || '')}</span>
+          <span class="assess-qcount">${i + 1} of ${total}</span>
         </div>
-        <div class="assessment-header">
-          <h1>Assessment: ${esc(course?.title || '')}</h1>
-          <p>${qs.length} question${qs.length!==1?'s':''} · Pass score: 80%</p>
-        </div>
-        <form id="assessment-form">
-          ${qs.map((q, i) => questionHTML(q, i)).join('')}
-        </form>
-        <div class="assessment-footer">
-          <button class="btn btn-accent" id="submit-btn" onclick="submitAssessment('${courseId}')">Submit Assessment</button>
-          <span id="answer-count" style="font-size:.85rem;color:var(--text-muted)">0 of ${qs.length} answered</span>
+        <div class="assess-prog-track"><div class="assess-prog-fill" style="width:${Math.round(((i+1)/total)*100)}%"></div></div>
+      </div>
+
+      <div class="assess-body">
+        <div class="assess-q-type-label">${q.type === 'mc' ? 'Multiple Choice' : 'True / False'}</div>
+        <div class="assess-q-text">${esc(q.question)}</div>
+        <div class="assess-options${q.type === 'tf' ? ' assess-options--tf' : ''}">
+          ${optionsHTML}
         </div>
       </div>
-    </div>`;
 
-  // Track answer progress
-  document.getElementById('assessment-form').addEventListener('change', () => {
-    const answered = qs.filter((q, i) => document.querySelector(`input[name="q${i}"]:checked`)).length;
-    const lbl = document.getElementById('answer-count');
-    if (lbl) lbl.textContent = `${answered} of ${qs.length} answered`;
-    // Clear unanswered highlights when user answers
-    document.querySelectorAll('.question-card.unanswered').forEach(el => el.classList.remove('unanswered'));
-  });
+      <div class="assess-nav">
+        <button class="btn btn-outline btn-sm assess-nav-prev"
+          onclick="${i > 0 ? 'assessmentPrev()' : `navigate('/course/${courseId}')`}">
+          ← ${i > 0 ? 'Previous' : 'Exit'}
+        </button>
+        <div class="assess-dots">${dots}</div>
+        ${answered
+          ? `<button class="btn ${isLast ? 'btn-accent' : 'btn-primary'} assess-nav-next"
+               onclick="${isLast ? `submitAssessment('${courseId}')` : 'assessmentNext()'}">
+               ${isLast ? '🏁 Submit' : 'Next →'}
+             </button>`
+          : `<button class="btn btn-outline assess-nav-next" style="opacity:.4;pointer-events:none">Next →</button>`
+        }
+      </div>
+    </div>`;
 }
 
-function questionHTML(q, i) {
-  if (q.type === 'mc') {
-    return `<div class="question-card" data-qi="${i}" style="animation-delay:${i*0.04}s">
-      <div class="question-num">Question ${i+1} · Multiple Choice</div>
-      <div class="question-text">${esc(q.question)}</div>
-      <div class="options-list">
-        ${q.options.map((opt, j) => `
-          <label class="option-item" id="opt-${i}-${j}">
-            <input type="radio" name="q${i}" value="${j}" style="accent-color:var(--accent)" onchange="highlightOption(${i},${j})" />
-            <span class="option-label">${esc(opt)}</span>
-          </label>`).join('')}
-      </div>
-    </div>`;
-  } else {
-    return `<div class="question-card" data-qi="${i}" style="animation-delay:${i*0.04}s">
-      <div class="question-num">Question ${i+1} · True / False</div>
-      <div class="question-text">${esc(q.question)}</div>
-      <div class="options-list">
-        <label class="option-item" id="opt-${i}-true">
-          <input type="radio" name="q${i}" value="true" style="accent-color:var(--accent)" onchange="highlightOption(${i},'true')" />
-          <span class="option-label">True</span>
-        </label>
-        <label class="option-item" id="opt-${i}-false">
-          <input type="radio" name="q${i}" value="false" style="accent-color:var(--accent)" onchange="highlightOption(${i},'false')" />
-          <span class="option-label">False</span>
-        </label>
-      </div>
-    </div>`;
-  }
+function selectAssessmentAnswer(val) {
+  const qs = questions[assessmentCourseId] || FALLBACK_QUESTIONS;
+  const q  = qs[assessmentCurrentQ];
+  assessmentAnswers[assessmentCurrentQ] = q.type === 'mc' ? parseInt(val) : (val === 'true' || val === true);
+  showAssessmentQuestion();
 }
 
-function highlightOption(qIdx, val) {
-  const card = document.querySelectorAll('.question-card')[qIdx];
-  card?.querySelectorAll('.option-item').forEach(el => el.classList.remove('selected'));
-  document.getElementById(`opt-${qIdx}-${val}`)?.classList.add('selected');
+function assessmentNext() {
+  const total = (questions[assessmentCourseId] || FALLBACK_QUESTIONS).length;
+  if (assessmentCurrentQ < total - 1) { assessmentCurrentQ++; showAssessmentQuestion(); }
+}
+
+function assessmentPrev() {
+  if (assessmentCurrentQ > 0) { assessmentCurrentQ--; showAssessmentQuestion(); }
 }
 
 function submitAssessment(courseId) {
   const qs = questions[courseId] || FALLBACK_QUESTIONS;
-
-  // Validate all questions answered
-  const unanswered = [];
-  qs.forEach((q, i) => {
-    const val = document.querySelector(`input[name="q${i}"]:checked`)?.value;
-    if (val === undefined || val === null) unanswered.push(i);
-  });
-  if (unanswered.length > 0) {
-    // Highlight unanswered cards
-    document.querySelectorAll('.question-card').forEach(el => el.classList.remove('unanswered'));
-    unanswered.forEach(i => {
-      const card = document.querySelector(`.question-card[data-qi="${i}"]`);
-      if (card) card.classList.add('unanswered');
-    });
-    const nums = unanswered.map(i => `#${i + 1}`).join(', ');
-    showToast(`Please answer question${unanswered.length > 1 ? 's' : ''} ${nums} before submitting.`, 'error');
-    const firstCard = document.querySelector('.question-card.unanswered');
-    if (firstCard) firstCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return;
-  }
-
   let correct = 0;
   qs.forEach((q, i) => {
-    const val = document.querySelector(`input[name="q${i}"]:checked`)?.value;
-    if (q.type === 'mc') {
-      if (parseInt(val) === q.correct) correct++;
-    } else {
-      if ((val === 'true') === q.correct) correct++;
-    }
+    const val = assessmentAnswers[i];
+    if (q.type === 'mc') { if (val === q.correct) correct++; }
+    else                 { if (val === q.correct) correct++; }
   });
 
-  const score = Math.round((correct / qs.length) * 100);
+  const score  = Math.round((correct / qs.length) * 100);
   const passed = score >= 80;
-
   setProgress(currentUser.id, courseId, { completed: passed, score, passed });
 
-  const form = document.getElementById('assessment-form');
-  const footer = document.querySelector('.assessment-footer');
-  if (form) form.querySelectorAll('input').forEach(i => i.disabled = true);
-  if (footer) footer.innerHTML = '';
-
-  // Show score
-  const container = document.querySelector('.assessment-page');
-  const scoreEl = document.createElement('div');
-  scoreEl.innerHTML = `
-    <div class="score-display">
-      <div class="score-circle ${passed?'score-pass':'score-fail'}">${score}%</div>
-      <h2 style="margin-bottom:.5rem">${passed ? '🎉 You Passed!' : '😔 Not Quite'}</h2>
-      <p style="color:var(--text-muted);margin-bottom:1.5rem">You got ${correct} out of ${qs.length} correct.</p>
-      <div style="display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap">
-        ${passed ? `<button class="btn btn-accent" onclick="showCertificate('${courseId}')">🏆 View Certificate</button>` : ''}
-        <button class="btn btn-outline" onclick="navigate('/course/${courseId}')">Review Course</button>
-        ${!passed ? `<button class="btn btn-primary" onclick="retakeAssessment('${courseId}')">Try Again</button>` : ''}
-        <button class="btn btn-outline" onclick="navigate('${currentUser.isAdmin ? '/admin/courses' : '/learner/my-learning'}')">Back</button>
+  const course = getCourse(courseId);
+  document.getElementById('app').innerHTML = `
+    <div class="assess-shell assess-shell--result">
+      <div class="assess-result-card">
+        <div class="assess-score-ring ${passed ? 'assess-score-ring--pass' : 'assess-score-ring--fail'}">
+          <span class="assess-score-num">${score}<span style="font-size:1.2rem">%</span></span>
+          <span class="assess-score-label">${passed ? 'Passed!' : 'Not yet'}</span>
+        </div>
+        <h2 style="margin:.5rem 0 .25rem">${passed ? '🎉 Great work!' : '😔 Keep going!'}</h2>
+        <p style="color:var(--text-muted);font-size:.95rem">${correct} out of ${qs.length} correct · Pass score is 80%</p>
+        <div class="assess-result-breakdown">
+          ${qs.map((q, i) => {
+            const val = assessmentAnswers[i];
+            const ok  = q.type === 'mc' ? val === q.correct : val === q.correct;
+            return `<div class="assess-breakdown-row ${ok ? 'ok' : 'wrong'}">
+              <span class="assess-breakdown-icon">${ok ? '✓' : '✗'}</span>
+              <span class="assess-breakdown-q">${esc(q.question)}</span>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap;margin-top:1.5rem">
+          ${passed ? `<button class="btn btn-accent" onclick="showCertificate('${courseId}')">🏆 Certificate</button>` : ''}
+          <button class="btn btn-outline" onclick="navigate('/course/${courseId}')">Review Course</button>
+          ${!passed ? `<button class="btn btn-primary" onclick="retakeAssessment('${courseId}')">Try Again</button>` : ''}
+          <button class="btn btn-outline" onclick="navigate('${currentUser.isAdmin && !adminViewingAsLearner ? '/admin/courses' : '/learner/my-learning'}')">Back</button>
+        </div>
       </div>
     </div>`;
-  container.appendChild(scoreEl);
-  scoreEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-  if (passed) { confetti(); setTimeout(() => showCertificate(courseId), 700); }
+  if (passed) { confetti(); setTimeout(() => showCertificate(courseId), 800); }
 }
 
 function retakeAssessment(courseId) {
