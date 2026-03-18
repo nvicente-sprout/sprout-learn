@@ -1430,7 +1430,7 @@ async function generateFromPastedText(courseId, courseTitle) {
 // ─── Assign Modal ─────────────────────────────────────────────────────────────
 function showAssignModal(courseId) {
   const course = getCourse(courseId);
-  const allLearners = learners();
+  const allLearners = allUsers;
   showModal(`
     <div class="modal" onclick="event.stopPropagation()">
       <div class="gmodal-header">
@@ -1476,8 +1476,8 @@ function toggleAssignee(userId, courseId) {
 }
 
 function toggleAssignAll(courseId) {
-  const allAssigned = learners().every(u => isAssigned(u.id, courseId));
-  learners().forEach(u => {
+  const allAssigned = allUsers.every(u => isAssigned(u.id, courseId));
+  allUsers.forEach(u => {
     if (!assignments[u.id]) assignments[u.id] = [];
     if (allAssigned) {
       assignments[u.id] = assignments[u.id].filter(cid => cid !== courseId);
