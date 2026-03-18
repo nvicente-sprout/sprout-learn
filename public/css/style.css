@@ -543,7 +543,11 @@ img { max-width: 100%; }
   flex: 1; display: flex; flex-direction: column;
   max-width: 640px; width: 100%; margin: 0 auto;
   padding: 2.5rem 1.25rem 1rem;
+  animation: assessFadeIn .25s ease both;
 }
+.assess-body.fading { animation: assessFadeOut .15s ease both; }
+@keyframes assessFadeIn  { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes assessFadeOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-8px); } }
 .assess-q-type-label {
   font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
   color: var(--text-light); margin-bottom: .6rem;

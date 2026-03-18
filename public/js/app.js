@@ -2119,11 +2119,21 @@ function selectAssessmentAnswer(val) {
 
 function assessmentNext() {
   const total = (questions[assessmentCourseId] || FALLBACK_QUESTIONS).length;
-  if (assessmentCurrentQ < total - 1) { assessmentCurrentQ++; showAssessmentQuestion(); }
+  if (assessmentCurrentQ < total - 1) fadeToQuestion(assessmentCurrentQ + 1);
 }
 
 function assessmentPrev() {
-  if (assessmentCurrentQ > 0) { assessmentCurrentQ--; showAssessmentQuestion(); }
+  if (assessmentCurrentQ > 0) fadeToQuestion(assessmentCurrentQ - 1);
+}
+
+function fadeToQuestion(idx) {
+  const body = document.querySelector('.assess-body');
+  if (body) {
+    body.classList.add('fading');
+    setTimeout(() => { assessmentCurrentQ = idx; showAssessmentQuestion(); }, 150);
+  } else {
+    assessmentCurrentQ = idx; showAssessmentQuestion();
+  }
 }
 
 function submitAssessment(courseId) {
