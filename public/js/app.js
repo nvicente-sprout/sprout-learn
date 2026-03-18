@@ -593,10 +593,21 @@ function courseCoverHTML(c) {
   </div>`;
 }
 
+function adminCoverHTML(c) {
+  const inner = c.coverUrl
+    ? `<img src="${c.coverUrl}" alt="" />`
+    : `<img src="assets/logos/logo-icon-green.svg" alt="Sprout Learn" class="cover-placeholder-logo" /><span class="cover-placeholder-title">${esc(c.title)}</span>`;
+  return `<div class="course-card-cover course-card-cover--editable" onclick="triggerCoverUpload('${c.id}')" title="Change cover image">
+    ${inner}
+    <div class="cover-edit-overlay">📷 Change Cover</div>
+    <input type="file" accept="image/*" id="cover-input-${c.id}" style="display:none" onchange="handleCoverChange('${c.id}',this)" />
+  </div>`;
+}
+
 function adminCourseCard(c) {
   const qs = questions[c.id];
   return `<div class="course-card" style="animation-delay:${courses.indexOf(c)*0.04}s">
-    ${courseCoverHTML(c)}
+    ${adminCoverHTML(c)}
     <div class="course-card-body">
       <div class="course-card-badges">
         ${typeBadge(c.type)} ${contentBadge(c.contentType)}
@@ -626,6 +637,53 @@ async function deleteCourse(id) {
   await sb.from('courses').delete().eq('id', id);
   toast('Course deleted');
   renderAdminCourses();
+}
+
+function triggerCoverUpload(courseId) {
+  document.getElementById(`cover-input-${courseId}`)?.click();
+}
+
+async function handleCoverChange(courseId, input) {
+  const file = input.files[0];
+  if (!file) return;
+  showLoader('Updating cover', 'Uploading image…');
+  try {
+    // Resize to max 640px wide using canvas
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = URL.createObjectURL(file);
+    });
+    const maxW = 640;
+    const scale = img.width > maxW ? maxW / img.width : 1;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85));
+
+    const { error: upErr } = await sb.storage.from('course-files')
+      .upload(`covers/${courseId}.jpg`, blob, { upsert: true, contentType: 'image/jpeg' });
+    if (upErr) throw upErr;
+
+    const { data: { publicUrl } } = sb.storage.from('course-files').getPublicUrl(`covers/${courseId}.jpg`);
+    // Add cache-bust so the new image loads immediately
+    const coverUrl = publicUrl + '?t=' + Date.now();
+
+    const course = getCourse(courseId);
+    if (course) course.coverUrl = coverUrl;
+    const { error: dbErr } = await sb.from('courses').update({ cover_url: coverUrl }).eq('id', courseId);
+    if (dbErr) throw dbErr;
+
+    hideLoader();
+    toast('Cover updated!');
+    renderAdminCourses();
+  } catch(err) {
+    hideLoader();
+    toast(`Cover upload failed: ${err.message}`, 'error');
+  }
+  input.value = '';
 }
 
 // ─── Create Course Modal ──────────────────────────────────────────────────────
