@@ -30,46 +30,51 @@ export default async function handler(req, res) {
 }
 
 async function fetchYoutubeTranscript(videoId) {
+  // Try the direct timedtext API first (fastest, no HTML scraping)
+  for (const lang of ['en', 'en-US', 'en-GB', '']) {
+    try {
+      const params = new URLSearchParams({ v: videoId, fmt: 'vtt', ...(lang ? { lang } : {}) });
+      const r = await fetch(`https://www.youtube.com/api/timedtext?${params}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible)' },
+      });
+      if (r.ok) {
+        const text = await r.text();
+        const cleaned = cleanVtt(text);
+        if (cleaned.length > 100) return cleaned;
+      }
+    } catch {}
+  }
+
+  // Fallback: scrape the watch page to find the caption track URL
   const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
     headers: {
       'Accept-Language': 'en-US,en;q=0.9',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     },
   });
-  if (!pageRes.ok) throw new Error(`YouTube fetch failed (${pageRes.status})`);
+  if (!pageRes.ok) throw new Error(`Could not reach YouTube (${pageRes.status})`);
   const html = await pageRes.text();
 
-  // Find caption track base URL — prefer English auto-captions
-  const allMatches = [...html.matchAll(/"baseUrl":"(https:\\\/\\\/www\.youtube\.com\\\/api\\\/timedtext[^"]+)"/g)];
-  if (!allMatches.length) {
-    // Try alternate pattern (sometimes URL is unescaped)
-    const altMatch = html.match(/captionTracks.*?"baseUrl":"([^"]+timedtext[^"]+)"/);
-    if (!altMatch) throw new Error('No captions available for this video. Make sure the video has auto-generated or manual captions enabled.');
-    const rawUrl = altMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-    return fetchCaptionVtt(rawUrl);
+  // Look for timedtext URLs in the page source
+  const urlMatches = [...html.matchAll(/https:\\\/\\\/www\.youtube\.com\\\/api\\\/timedtext[^"\\]*/g)];
+  if (!urlMatches.length) {
+    throw new Error('No captions found. This video may not have captions, or YouTube blocked the request. Use the manual text option below.');
   }
 
-  // Prefer track with lang=en
-  const enMatch = allMatches.find(m => m[1].includes('lang=en') || m[1].includes('lang%3Den'));
-  const bestMatch = enMatch || allMatches[0];
-  const rawUrl = bestMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-  return fetchCaptionVtt(rawUrl);
+  // Prefer English track
+  const enUrl = urlMatches.find(m => m[0].includes('lang=en') || m[0].includes('lang%3Den'))?.[0]
+             || urlMatches[0][0];
+  const captionUrl = enUrl.replace(/\\\//g, '/').replace(/\\u0026/g, '&') + '&fmt=vtt';
+
+  const captionRes = await fetch(captionUrl);
+  if (!captionRes.ok) throw new Error('Could not download captions');
+  return cleanVtt(await captionRes.text());
 }
 
-async function fetchCaptionVtt(captionUrl) {
-  const vttRes = await fetch(captionUrl + '&fmt=vtt');
-  if (!vttRes.ok) throw new Error('Could not fetch captions');
-  const vtt = await vttRes.text();
-
+function cleanVtt(vtt) {
   return vtt
     .split('\n')
-    .filter(line =>
-      line.trim() &&
-      !line.startsWith('WEBVTT') &&
-      !line.match(/^\d{2}:\d{2}:\d{2}/) &&
-      !line.match(/^\d+$/) &&
-      !line.startsWith('NOTE ')
-    )
+    .filter(l => l.trim() && !l.startsWith('WEBVTT') && !l.match(/^\d{2}:\d{2}/) && !l.startsWith('NOTE ') && !l.match(/^\d+$/))
     .join(' ')
     .replace(/<[^>]+>/g, '')
     .replace(/\s+/g, ' ')
@@ -87,7 +92,7 @@ async function fetchSlidesText(presentationId) {
 
   if (!res.ok) {
     if (res.status === 403 || res.status === 404) {
-      throw new Error('Presentation not published. In Google Slides, go to File → Share → Publish to web, then try again.');
+      throw new Error('Presentation not published. In Google Slides: File → Share → Publish to web, then try again.');
     }
     throw new Error(`Could not fetch slides (${res.status})`);
   }
@@ -103,6 +108,6 @@ async function fetchSlidesText(presentationId) {
     .trim()
     .slice(0, 8000);
 
-  if (text.length < 50) throw new Error('Could not extract text from slides. Ensure the presentation is published to web and contains text.');
+  if (text.length < 50) throw new Error('Could not extract text from slides. Ensure the presentation is published to web and contains text content.');
   return text;
 }

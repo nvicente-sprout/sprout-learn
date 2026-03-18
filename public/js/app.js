@@ -249,13 +249,22 @@ function courseToRow(c) {
 async function loadData() {
   showLoader('Loading Sprout Learn', 'Fetching your data');
   try {
-    const [{ data: cData }, { data: qData }, { data: aData }, { data: pData }, { data: uData }] = await Promise.all([
+    const [cRes, qRes, aRes, pRes, uRes] = await Promise.all([
       sb.from('courses').select('*').order('created_at', { ascending: false }),
       sb.from('questions').select('*'),
       sb.from('assignments').select('*'),
       sb.from('progress').select('*'),
       sb.from('users').select('*').order('created_at', { ascending: true }),
     ]);
+
+    if (cRes.error) console.error('courses load error:', cRes.error.message);
+    if (qRes.error) console.error('questions load error:', qRes.error.message);
+    if (aRes.error) console.error('assignments load error:', aRes.error.message);
+    if (pRes.error) console.error('progress load error:', pRes.error.message);
+    if (uRes.error) console.error('users load error:', uRes.error.message);
+
+    const cData = cRes.data, qData = qRes.data, aData = aRes.data,
+          pData = pRes.data, uData = uRes.data;
 
     allUsers = uData ? uData.map((u, i) => ({
       id: u.id, email: u.email, name: u.name || u.email.split('@')[0],
@@ -282,8 +291,7 @@ async function loadData() {
       };
     });
   } catch (err) {
-    console.error('Failed to load data from Supabase:', err);
-    if (!courses.length) courses = DEFAULT_COURSES;
+    console.error('loadData exception:', err);
   }
   hideLoader();
 }
@@ -680,7 +688,14 @@ function createCourse() {
   };
   courses.unshift(newCourse);
   sb.from('courses').upsert(courseToRow(newCourse))
-    .then(({ error }) => { if (error) console.error('Course save:', error); });
+    .then(({ error }) => {
+      if (error) {
+        console.error('Course save:', error);
+        toast(`Save failed: ${error.message}`, 'error');
+        courses.shift();
+        renderAdminCourses();
+      }
+    });
   closeModal();
   toast('Course created!');
   renderAdminCourses();
@@ -798,8 +813,13 @@ async function submitUrlCourse() {
     totalPages: 0,
   };
   courses.unshift(newCourse);
-  await sb.from('courses').upsert(courseToRow(newCourse))
-    .then(({ error }) => { if (error) console.error('Course save:', error); });
+  const { error: saveErr } = await sb.from('courses').upsert(courseToRow(newCourse));
+  if (saveErr) {
+    hideLoader();
+    toast(`Course save failed: ${saveErr.message}`, 'error');
+    courses.shift();
+    return;
+  }
 
   if (mode === 'ai') {
     showLoader('Generating questions', detected.type === 'youtube' ? 'Fetching video transcript…' : 'Reading slide content…');
@@ -813,7 +833,10 @@ async function submitUrlCourse() {
       });
       const contentData = await contentRes.json();
       if (!contentData.text || contentData.text.length < 50) {
-        throw new Error(contentData.error || 'Not enough content to generate questions.');
+        hideLoader();
+        renderAdminCourses();
+        showPasteContentModal(courseId, title, detected.type, contentData.error);
+        return;
       }
       const qs = await generateQuestionsAI(contentData.text, title);
       questions[courseId] = qs;
@@ -823,8 +846,9 @@ async function submitUrlCourse() {
     } catch(err) {
       hideLoader();
       console.error('AI URL generation error:', err);
-      toast(`Course added. AI failed: ${err.message}`, 'info');
-      requestAnimationFrame(() => requestAnimationFrame(() => showManualBuilderModal(courseId)));
+      renderAdminCourses();
+      showPasteContentModal(courseId, title, detected.type, err.message);
+      return;
     }
     renderAdminCourses();
   } else if (mode === 'manual') {
@@ -1285,7 +1309,9 @@ async function aiGenerateForUrl(courseId) {
     });
     const contentData = await contentRes.json();
     if (!contentData.text || contentData.text.length < 50) {
-      throw new Error(contentData.error || 'Not enough content extracted to generate questions.');
+      hideLoader();
+      showPasteContentModal(courseId, course.title, course.contentType, contentData.error);
+      return;
     }
     const qs = await generateQuestionsAI(contentData.text, course.title);
     questions[courseId] = qs;
@@ -1296,8 +1322,50 @@ async function aiGenerateForUrl(courseId) {
   } catch(err) {
     hideLoader();
     console.error('AI URL generation error:', err);
+    showPasteContentModal(courseId, course.title, course.contentType, err.message);
+  }
+}
+
+function showPasteContentModal(courseId, courseTitle, contentType, errorMsg) {
+  const hint = contentType === 'youtube'
+    ? 'On YouTube: open the video, click the <strong>⋯ More</strong> button → <strong>Show transcript</strong>, then copy and paste it here.'
+    : 'In Google Slides: go to <strong>File → Share → Publish to web</strong>, then try AI generate again. Or paste the slide text below.';
+  showModal(`
+    <div class="modal" style="max-width:560px" onclick="event.stopPropagation()">
+      <div class="gmodal-header">
+        <h2>Paste Content for AI Questions</h2>
+        <button class="gmodal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="gmodal-body">
+        ${errorMsg ? `<div style="background:#fff3e0;border:1px solid #ffb74d;border-radius:8px;padding:.75rem 1rem;font-size:.83rem;color:#e65100;margin-bottom:1rem">${esc(errorMsg)}</div>` : ''}
+        <p style="font-size:.88rem;color:var(--text-muted);margin-bottom:.75rem" id="paste-hint">${hint}</p>
+        <div class="form-group">
+          <label class="form-label">Course content / transcript *</label>
+          <textarea id="paste-text" class="form-textarea" rows="8" placeholder="Paste the video transcript or slide text here…" style="font-size:.82rem"></textarea>
+        </div>
+      </div>
+      <div class="gmodal-footer">
+        <button class="btn btn-outline" onclick="closeModal();setTimeout(()=>showManualBuilderModal('${courseId}'),200)">✍️ Manual Builder</button>
+        <button class="btn btn-primary" onclick="generateFromPastedText('${courseId}','${esc(courseTitle)}')">🤖 Generate Questions</button>
+      </div>
+    </div>`);
+}
+
+async function generateFromPastedText(courseId, courseTitle) {
+  const text = document.getElementById('paste-text')?.value.trim();
+  if (!text || text.length < 50) { toast('Please paste more content (at least a few sentences)', 'error'); return; }
+  closeModal();
+  showLoader('Generating questions', 'AI is reading your content');
+  try {
+    const qs = await generateQuestionsAI(text, courseTitle);
+    questions[courseId] = qs;
+    await sb.from('questions').upsert({ course_id: courseId, questions_json: qs });
+    hideLoader();
+    toast(`${qs.length} questions generated!`);
+    renderAdminCourses();
+  } catch(err) {
+    hideLoader();
     toast(`AI failed: ${err.message}`, 'error');
-    showManualBuilderModal(courseId);
   }
 }
 
