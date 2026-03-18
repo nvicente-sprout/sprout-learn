@@ -1,0 +1,1799 @@
+/**
+ * app.js — Sprout Learn
+ * Sprout Solutions | Native LMS — Vanilla JS SPA
+ */
+
+// ─── Config ───────────────────────────────────────────────────────────────────
+const SUPABASE_URL      = 'https://jwdumjludmjuufqhzysk.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3ZHVtamx1ZG1qdXVmcWh6eXNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4MTMzNjcsImV4cCI6MjA4OTM4OTM2N30.kPXVHsFBBOvYgiDAP-LatzX4oiM4huhHyMFN1YKcfCk';
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const GEMINI_API_KEY = 'AIzaSyA166RLYwsXh94kDZNPi0e3cooO6rA0eb4';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`;
+
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ─── Initial Data ─────────────────────────────────────────────────────────────
+const USERS = [
+  { id: 'noel',   name: 'Noel Lorenzo Vicente',     role: 'Director of Alliance Management', isAdmin: true,  color: '#1B3A1B' },
+  { id: 'karofa', name: 'Karofa Kristine Cartaño',  role: 'Alliance Manager',                isAdmin: false, color: '#2d5a2d' },
+  { id: 'paolo',  name: 'Paolo Suarez',              role: 'Alliance Manager',                isAdmin: false, color: '#3a7a3a' },
+  { id: 'jean',   name: 'Jean Marjhorie Liquigan',   role: 'Alliance Manager',                isAdmin: false, color: '#4a9e4a' },
+];
+
+const CATEGORIES = [
+  'Leadership & Management', 'HR & Compliance', 'Partner Solutions',
+  'Sprout Product Training', 'Uploaded Content', 'Other',
+];
+const CAT_EMOJI = {
+  'Leadership & Management': '🎯', 'HR & Compliance': '📋',
+  'Partner Solutions': '🤝', 'Sprout Product Training': '🌱',
+  'Uploaded Content': '📄', 'Other': '📚',
+};
+
+const DEFAULT_COURSES = [
+  { id: 'c1', title: 'Effective Leadership Fundamentals',    category: 'Leadership & Management', type: 'Free', contentType: 'none',    totalPages: 0, description: 'Build the foundational skills of effective leadership in the modern workplace.' },
+  { id: 'c2', title: 'Philippine Labor Law Basics',          category: 'HR & Compliance',         type: 'Free', contentType: 'none',    totalPages: 0, description: 'Understand the key provisions of Philippine labor law and employee rights.' },
+  { id: 'c3', title: 'Data Privacy in the Workplace',        category: 'HR & Compliance',         type: 'Free', contentType: 'none',    totalPages: 0, description: 'Learn how to protect employee and customer data under the Data Privacy Act.' },
+  { id: 'c4', title: 'Manatal ATS Demo',                     category: 'Partner Solutions',        type: 'Free', contentType: 'youtube', totalPages: 0, youtubeId: 'VjinpYMUMoc', description: 'Explore Manatal\'s Applicant Tracking System with a live product demo.' },
+  { id: 'c5', title: 'Conflict Resolution at Work',          category: 'Leadership & Management', type: 'Free', contentType: 'none',    totalPages: 0, description: 'Practical strategies for managing and resolving workplace conflict.' },
+  { id: 'c6', title: 'Employee Onboarding Best Practices',   category: 'HR & Compliance',         type: 'Paid', contentType: 'none',    totalPages: 0, description: 'Design effective onboarding programs that set new hires up for success.' },
+];
+let courses = [];
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let currentUser   = null;
+let currentRoute  = '';
+let assignments   = {};  // { userId: [courseId, ...] }
+let progress      = {};  // { 'userId_courseId': { currentSlide, completed, score, passed } }
+let questions     = {};  // { courseId: [...] }
+let viewerPdfDoc  = null;
+let viewerPage    = 1;
+let viewerCourseId = null;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function esc(str) {
+  return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function initials(name) {
+  return name.split(' ').slice(0,2).map(w => w[0]).join('').toUpperCase();
+}
+function formatDate(d = new Date()) {
+  return d.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+function getCourse(id)   { return courses.find(c => c.id === id); }
+function getUser(id)     { return USERS.find(u => u.id === id); }
+function getProgress(userId, courseId) {
+  return progress[`${userId}_${courseId}`] || { currentSlide: 0, completed: false, score: null, passed: false };
+}
+function setProgress(userId, courseId, update) {
+  const key = `${userId}_${courseId}`;
+  progress[key] = { ...getProgress(userId, courseId), ...update };
+  const p = progress[key];
+  sb.from('progress').upsert({
+    user_id: userId, course_id: courseId,
+    current_slide: p.currentSlide, completed: p.completed,
+    score: p.score ?? null, passed: p.passed,
+  }).then(({ error }) => { if (error) console.error('Progress save:', error); });
+}
+function getUserAssignments(userId) { return assignments[userId] || []; }
+function isAssigned(userId, courseId) { return getUserAssignments(userId).includes(courseId); }
+function userCompletions(userId) {
+  return getUserAssignments(userId).filter(cid => getProgress(userId, cid).completed).length;
+}
+function userAvgProgress(userId) {
+  const assigned = getUserAssignments(userId);
+  if (!assigned.length) return 0;
+  const total = assigned.reduce((sum, cid) => {
+    const p = getProgress(userId, cid);
+    if (p.completed) return sum + 100;
+    const c = getCourse(cid);
+    if (!c || !c.totalPages) return sum;
+    return sum + Math.round((p.currentSlide / c.totalPages) * 100);
+  }, 0);
+  return Math.round(total / assigned.length);
+}
+function learners() { return USERS.filter(u => !u.isAdmin); }
+
+// ─── Gamification ─────────────────────────────────────────────────────────────
+const LEVELS = [
+  { min: 0,    label: 'Seedling',        icon: '🌱' },
+  { min: 100,  label: 'Sprout',          icon: '🌿' },
+  { min: 300,  label: 'Sapling',         icon: '🪴' },
+  { min: 600,  label: 'Tree',            icon: '🌳' },
+  { min: 1000, label: 'Forest Guardian', icon: '🌲' },
+];
+const BADGES = [
+  { id: 'first_pass',   icon: '🎓', label: 'First Graduate',  desc: 'Passed your first assessment' },
+  { id: 'perfect',      icon: '💯', label: 'Perfect Score',   desc: 'Scored 100% on an assessment' },
+  { id: 'all_done',     icon: '🏅', label: 'All Clear',       desc: 'Completed all assigned courses' },
+  { id: 'speed',        icon: '⚡', label: 'Quick Learner',   desc: 'Passed 3 or more assessments' },
+  { id: 'high_scorer',  icon: '🔥', label: 'On Fire',         desc: 'Scored 90%+ on 3 assessments' },
+];
+
+function userXP(userId) {
+  return getUserAssignments(userId).reduce((xp, cid) => {
+    const p = getProgress(userId, cid);
+    if (!p.completed) return xp;
+    const base = 50;
+    const bonus = p.score ? Math.round((p.score / 100) * 50) : 0;
+    const perfect = p.score === 100 ? 25 : 0;
+    return xp + base + bonus + perfect;
+  }, 0);
+}
+function userLevel(userId) {
+  const xp = userXP(userId);
+  let level = LEVELS[0];
+  for (const l of LEVELS) { if (xp >= l.min) level = l; }
+  return level;
+}
+function userNextLevel(userId) {
+  const xp = userXP(userId);
+  const next = LEVELS.find(l => l.min > xp);
+  return next ? { xpNeeded: next.min - xp, label: next.label } : null;
+}
+function userBadges(userId) {
+  const assignments = getUserAssignments(userId);
+  const passes = assignments.filter(cid => getProgress(userId, cid).passed);
+  const scores = passes.map(cid => getProgress(userId, cid).score || 0);
+  const earned = [];
+  if (passes.length >= 1) earned.push('first_pass');
+  if (scores.some(s => s === 100)) earned.push('perfect');
+  if (assignments.length > 0 && assignments.every(cid => getProgress(userId, cid).completed)) earned.push('all_done');
+  if (passes.length >= 3) earned.push('speed');
+  if (scores.filter(s => s >= 90).length >= 3) earned.push('high_scorer');
+  return BADGES.filter(b => earned.includes(b.id));
+}
+
+function confetti() {
+  const colors = ['#4CAF50','#32CE13','#1B3A1B','#FFD700','#FF6B6B','#4FC3F7'];
+  for (let i = 0; i < 80; i++) {
+    const el = document.createElement('div');
+    el.style.cssText = `
+      position:fixed; z-index:99999; pointer-events:none;
+      width:${6 + Math.random()*6}px; height:${6 + Math.random()*6}px;
+      background:${colors[Math.floor(Math.random()*colors.length)]};
+      border-radius:${Math.random()>0.5?'50%':'2px'};
+      left:${Math.random()*100}vw; top:-10px;
+      opacity:1; transform:rotate(${Math.random()*360}deg);
+    `;
+    document.body.appendChild(el);
+    const duration = 1800 + Math.random() * 1400;
+    const drift = (Math.random() - 0.5) * 200;
+    el.animate([
+      { transform: `translateY(0) translateX(0) rotate(0deg)`, opacity: 1 },
+      { transform: `translateY(100vh) translateX(${drift}px) rotate(${Math.random()*720}deg)`, opacity: 0 }
+    ], { duration, easing: 'cubic-bezier(.25,.46,.45,.94)' }).onfinish = () => el.remove();
+  }
+}
+
+function toast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+function animateCount(el, target) {
+  const dur = 900;
+  const start = Date.now();
+  const run = () => {
+    const t = Math.min((Date.now() - start) / dur, 1);
+    el.textContent = Math.round(t * target);
+    if (t < 1) requestAnimationFrame(run);
+  };
+  requestAnimationFrame(run);
+}
+
+function showModal(html) {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `<div class="modal-overlay" id="modal-overlay-el" onclick="handleOverlayClick(event)">${html}</div>`;
+}
+function closeModal() {
+  document.getElementById('modal-root').innerHTML = '';
+}
+function handleOverlayClick(e) {
+  if (e.target.id === 'modal-overlay-el') closeModal();
+}
+
+function showLoader(msg = 'Loading', sub = '') {
+  let el = document.getElementById('global-loader');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'global-loader';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `
+    <div class="loader-card">
+      <div class="loader-ring-wrap">
+        <svg class="loader-ring" viewBox="0 0 80 80">
+          <circle class="track" cx="40" cy="40" r="35"/>
+          <circle cx="40" cy="40" r="35" transform="rotate(-90 40 40)"/>
+        </svg>
+        <img src="assets/logos/logo-icon-green.svg" class="loader-logo-img" alt="" />
+      </div>
+      <div class="loader-msg">${msg}<span class="loader-dot"></span><span class="loader-dot"></span><span class="loader-dot"></span></div>
+      ${sub ? `<div class="loader-sub">${sub}</div>` : ''}
+    </div>`;
+  el.style.display = 'flex';
+}
+function hideLoader() {
+  const el = document.getElementById('global-loader');
+  if (el) el.remove();
+}
+
+function nextCourseId() {
+  const nums = courses.map(c => parseInt(c.id.replace('c',''))).filter(Boolean);
+  return 'c' + (Math.max(0, ...nums) + 1);
+}
+
+// ─── Supabase Data Layer ──────────────────────────────────────────────────────
+function courseFromRow(row) {
+  return {
+    id: row.id, title: row.title, description: row.description || '',
+    category: row.category, type: row.type, contentType: row.content_type,
+    totalPages: row.total_pages || 0, pdfDataUrl: row.pdf_url || null,
+    coverUrl: row.cover_url || null, youtubeId: row.youtube_id || null,
+  };
+}
+function courseToRow(c) {
+  return {
+    id: c.id, title: c.title, description: c.description || '',
+    category: c.category, type: c.type, content_type: c.contentType,
+    total_pages: c.totalPages || 0, pdf_url: c.pdfDataUrl || null,
+    cover_url: c.coverUrl || null, youtube_id: c.youtubeId || null,
+  };
+}
+
+async function loadData() {
+  showLoader('Loading Sprout Learn', 'Fetching your data');
+  try {
+    const [{ data: cData }, { data: qData }, { data: aData }, { data: pData }] = await Promise.all([
+      sb.from('courses').select('*').order('created_at', { ascending: false }),
+      sb.from('questions').select('*'),
+      sb.from('assignments').select('*'),
+      sb.from('progress').select('*'),
+    ]);
+
+    courses = cData ? cData.map(courseFromRow) : [];
+
+    questions = {};
+    if (qData) qData.forEach(r => { questions[r.course_id] = r.questions_json; });
+
+    assignments = {};
+    if (aData) aData.forEach(r => {
+      if (!assignments[r.user_id]) assignments[r.user_id] = [];
+      assignments[r.user_id].push(r.course_id);
+    });
+
+    progress = {};
+    if (pData) pData.forEach(r => {
+      progress[`${r.user_id}_${r.course_id}`] = {
+        currentSlide: r.current_slide, completed: r.completed,
+        score: r.score, passed: r.passed,
+      };
+    });
+  } catch (err) {
+    console.error('Failed to load data from Supabase:', err);
+    if (!courses.length) courses = DEFAULT_COURSES;
+  }
+  hideLoader();
+}
+
+// ─── Router ───────────────────────────────────────────────────────────────────
+window.addEventListener('hashchange', handleRoute);
+window.addEventListener('DOMContentLoaded', async () => {
+  await loadData();
+  if (!window.location.hash || window.location.hash === '#/') {
+    window.location.hash = '#/login';
+  }
+  handleRoute();
+});
+
+function navigate(route) {
+  window.location.hash = route;
+}
+
+function handleRoute() {
+  const hash = window.location.hash.slice(1) || '/login';
+  currentRoute = hash;
+
+  if (!currentUser && hash !== '/login') {
+    navigate('/login');
+    return;
+  }
+  if (currentUser && hash === '/login') {
+    navigate(currentUser.isAdmin ? '/admin/dashboard' : '/learner/dashboard');
+    return;
+  }
+
+  if (hash === '/login')               { renderLogin(); return; }
+
+  // Viewer and assessment are full-screen, skip layout
+  if (hash.startsWith('/course/'))     { renderCourseViewer(hash.replace('/course/','')); return; }
+  if (hash.startsWith('/assessment/')) { renderAssessmentPage(hash.replace('/assessment/','')); return; }
+
+  renderLayout();
+
+  if (hash === '/admin/dashboard')     renderAdminDashboard();
+  else if (hash === '/admin/courses')  renderAdminCourses();
+  else if (hash === '/admin/team')     renderAdminTeam();
+  else if (hash === '/admin/leaderboard') renderLeaderboard(true);
+  else if (hash === '/learner/dashboard')  renderLearnerDashboard();
+  else if (hash === '/learner/library')    renderLearnerLibrary();
+  else if (hash === '/learner/my-learning') renderMyLearning();
+  else if (hash === '/learner/leaderboard') renderLeaderboard(false);
+  else navigate(currentUser.isAdmin ? '/admin/dashboard' : '/learner/dashboard');
+}
+
+// ─── Login ────────────────────────────────────────────────────────────────────
+function renderLogin() {
+  document.getElementById('app').innerHTML = `
+    <div class="login-page">
+      <div class="login-card">
+        <div class="login-logo">
+          <img src="assets/logos/sproutsol-logo-01.svg" alt="Sprout Solutions" />
+        </div>
+        <div class="login-heading">Welcome to Sprout Learn</div>
+        <div class="login-sub">Select your profile to continue</div>
+        <div class="user-list">
+          ${USERS.map(u => `
+            <div class="user-card" onclick="login('${u.id}')">
+              <div class="user-avatar" style="background:${u.color}">${initials(u.name)}</div>
+              <div class="user-card-info">
+                <div class="user-card-name">${esc(u.name)}</div>
+                <div class="user-card-role">${esc(u.role)}</div>
+              </div>
+              ${u.isAdmin ? '<span class="user-card-badge">Admin</span>' : ''}
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
+function login(userId) {
+  currentUser = getUser(userId);
+  navigate(currentUser.isAdmin ? '/admin/dashboard' : '/learner/dashboard');
+}
+
+function logout() {
+  currentUser = null;
+  navigate('/login');
+}
+
+// ─── Layout ───────────────────────────────────────────────────────────────────
+function renderLayout() {
+  const isAdmin = currentUser?.isAdmin;
+  const navLinks = isAdmin ? [
+    { href: '/admin/dashboard',   label: 'Dashboard',     icon: iconHome() },
+    { href: '/admin/courses',     label: 'Courses',       icon: iconCourses() },
+    { href: '/admin/team',        label: 'Team Progress', icon: iconUsers() },
+    { href: '/admin/leaderboard', label: 'Leaderboard',   icon: iconTrophy() },
+  ] : [
+    { href: '/learner/dashboard',   label: 'Dashboard',      icon: iconHome() },
+    { href: '/learner/library',     label: 'Course Library',  icon: iconCourses() },
+    { href: '/learner/my-learning', label: 'My Learning',     icon: iconBook() },
+    { href: '/learner/leaderboard', label: 'Leaderboard',     icon: iconTrophy() },
+  ];
+
+  const tabs = navLinks.map(l => `
+    <a class="nav-tab ${currentRoute === l.href ? 'active' : ''}" href="#${l.href}">
+      <span class="nav-icon">${l.icon}</span>${esc(l.label)}
+    </a>`).join('');
+
+  document.getElementById('app').innerHTML = `
+    <div class="app-layout">
+      <header class="app-header">
+        <div class="header-inner">
+          <a class="header-brand" href="#${navLinks[0].href}">
+            <img src="assets/logos/sproutsol-logo-white.svg" alt="Sprout Solutions" class="header-brand-logo" />
+          </a>
+          <nav class="header-nav">${tabs}</nav>
+          <div class="header-user">
+            <div class="topbar-avatar" style="background:${currentUser.color}">${initials(currentUser.name)}</div>
+            <span class="topbar-name">${esc(currentUser.name.split(' ')[0])}</span>
+            <button class="topbar-logout" onclick="logout()">Logout</button>
+            <button class="hamburger" onclick="toggleMobileMenu()" aria-label="Menu">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+            </button>
+          </div>
+        </div>
+        <nav class="mobile-nav" id="mobile-nav">${tabs}</nav>
+      </header>
+      <main class="main-content" id="main-content"></main>
+    </div>`;
+}
+
+function toggleMobileMenu() {
+  document.getElementById('mobile-nav')?.classList.toggle('open');
+}
+
+function setMain(html) {
+  const el = document.getElementById('main-content');
+  if (el) { el.innerHTML = html; el.classList.remove('fade-up'); void el.offsetWidth; el.classList.add('fade-up'); }
+}
+function setTitle(t) { document.title = `${t} — Sprout Learn`; }
+
+// ─── Admin Dashboard ──────────────────────────────────────────────────────────
+function renderAdminDashboard() {
+  setTitle('Dashboard');
+  const totalCompletions = learners().reduce((s, u) => s + userCompletions(u.id), 0);
+  const avgProg = learners().length
+    ? Math.round(learners().reduce((s, u) => s + userAvgProgress(u.id), 0) / learners().length)
+    : 0;
+
+  const topLearners = [...learners()]
+    .sort((a,b) => userCompletions(b.id) - userCompletions(a.id) || userAvgProgress(b.id) - userAvgProgress(a.id))
+    .slice(0,4);
+
+  setMain(`
+    <div class="page-header fade-up">
+      <h1>Welcome back, ${esc(currentUser.name.split(' ')[0])} 👋</h1>
+      <p>Here's your team's learning overview</p>
+    </div>
+    <div class="stats-grid">
+      ${statCard('Team Members', learners().length, '', '#1B3A1B', 0)}
+      ${statCard('Total Courses', courses.length, '', '#2d5a2d', 1)}
+      ${statCard('Completions', totalCompletions, '', '#3a7a3a', 2)}
+      ${statCard('Avg Progress', avgProg, '%', '#4a9e4a', 3)}
+    </div>
+    <p class="section-heading">Leaderboard Snapshot</p>
+    <div class="leaderboard-list">
+      ${topLearners.map((u, i) => lbItem(u, i)).join('')}
+    </div>
+    <div style="margin-top:1rem">
+      <a href="#/admin/leaderboard" class="btn btn-outline btn-sm">View full leaderboard →</a>
+    </div>`);
+
+  document.querySelectorAll('.stat-value[data-target]').forEach(el => {
+    animateCount(el, parseInt(el.dataset.target));
+  });
+}
+
+function statCard(label, value, suffix, color, delay) {
+  return `<div class="stat-card" style="animation-delay:${delay*0.07}s;border-top:3px solid ${color}">
+    <div class="stat-label">${esc(label)}</div>
+    <div class="stat-value" data-target="${value}">0</div>
+    ${suffix ? `<div class="stat-suffix">${esc(suffix)}</div>` : ''}
+  </div>`;
+}
+
+function lbItem(u, i) {
+  const medals = ['🥇','🥈','🥉'];
+  const done = userCompletions(u.id);
+  const avg  = userAvgProgress(u.id);
+  return `<div class="lb-item ${i===0?'top1':''}" style="animation-delay:${i*0.07}s">
+    <div class="lb-rank">${medals[i] || `#${i+1}`}</div>
+    <div class="user-avatar" style="background:${u.color};width:38px;height:38px;font-size:.8rem">${initials(u.name)}</div>
+    <div class="lb-info"><div class="lb-name">${esc(u.name)}</div><div class="lb-role">${esc(u.role)}</div></div>
+    <div class="lb-stats"><strong>${done}</strong> completions &nbsp;·&nbsp; ${avg}% avg</div>
+  </div>`;
+}
+
+// ─── Admin Courses ────────────────────────────────────────────────────────────
+function renderAdminCourses(filterQ = '', filterCat = '') {
+  setTitle('Courses');
+  let filtered = courses.filter(c => {
+    const matchQ   = !filterQ   || c.title.toLowerCase().includes(filterQ.toLowerCase()) || c.category.toLowerCase().includes(filterQ.toLowerCase());
+    const matchCat = !filterCat || c.category === filterCat;
+    return matchQ && matchCat;
+  });
+
+  setMain(`
+    <div class="page-header"><h1>Courses</h1><p>Manage all training content</p></div>
+    <div class="toolbar">
+      <div class="toolbar-search">
+        <svg viewBox="0 0 20 20" fill="none"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.5"/><path d="M13 13L17 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input id="course-search" placeholder="Search courses…" value="${esc(filterQ)}" oninput="renderAdminCourses(this.value, document.getElementById('course-cat-filter')?.value)" />
+      </div>
+      <select class="toolbar-select" id="course-cat-filter" onchange="renderAdminCourses(document.getElementById('course-search')?.value, this.value)">
+        <option value="">All Categories</option>
+        ${CATEGORIES.map(c => `<option value="${esc(c)}" ${filterCat===c?'selected':''}>${esc(c)}</option>`).join('')}
+      </select>
+      <div class="toolbar-spacer"></div>
+      <button class="btn btn-outline btn-sm" onclick="showUploadModal()">📄 Upload PDF</button>
+      <button class="btn btn-primary btn-sm" onclick="showCreateCourseModal()">+ New Course</button>
+    </div>
+    <div class="course-grid">
+      ${filtered.length ? filtered.map(c => adminCourseCard(c)).join('') : '<div class="empty-state"><span class="empty-icon">📭</span><h2>No courses found</h2><p>Try different filters.</p></div>'}
+    </div>`);
+}
+
+function courseCoverHTML(c) {
+  if (c.coverUrl) {
+    return `<div class="course-card-cover"><img src="${c.coverUrl}" alt="" /></div>`;
+  }
+  return `<div class="course-card-cover course-card-cover--placeholder">
+    <img src="assets/logos/logo-icon-green.svg" alt="Sprout Learn" class="cover-placeholder-logo" />
+    <span class="cover-placeholder-title">${esc(c.title)}</span>
+  </div>`;
+}
+
+function adminCourseCard(c) {
+  const qs = questions[c.id];
+  return `<div class="course-card" style="animation-delay:${courses.indexOf(c)*0.04}s">
+    ${courseCoverHTML(c)}
+    <div class="course-card-body">
+      <div class="course-card-badges">
+        ${typeBadge(c.type)} ${contentBadge(c.contentType)}
+        ${qs ? `<span class="badge badge-q">${qs.length} Q</span>` : ''}
+      </div>
+      <div class="course-card-title">${esc(c.title)}</div>
+      <div class="course-card-desc">${esc(c.description)}</div>
+      <div class="course-card-meta">${CAT_EMOJI[c.category]||'📚'} ${esc(c.category)} ${c.totalPages ? `· ${c.totalPages} slides` : ''}</div>
+      <div class="course-card-actions">
+        <a href="#/course/${c.id}" class="btn btn-accent btn-sm">▶ Preview</a>
+        <button class="btn btn-outline btn-sm" onclick="showAssignModal('${c.id}')">👥 Assign</button>
+        <button class="btn btn-outline btn-sm" onclick="${qs ? `showManualBuilderModal('${c.id}')` : `showAddQuestionsModal('${c.id}')`}">${qs ? '✏️ Edit Questions' : '+ Questions'}</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteCourse('${c.id}')">🗑</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function deleteCourse(id) {
+  if (!confirm('Delete this course?')) return;
+  courses = courses.filter(c => c.id !== id);
+  delete questions[id];
+  Object.keys(assignments).forEach(uid => {
+    assignments[uid] = assignments[uid].filter(cid => cid !== id);
+  });
+  Object.keys(progress).forEach(k => { if (k.includes(`_${id}`)) delete progress[k]; });
+  await sb.from('courses').delete().eq('id', id);
+  toast('Course deleted');
+  renderAdminCourses();
+}
+
+// ─── Create Course Modal ──────────────────────────────────────────────────────
+function showCreateCourseModal() {
+  showModal(`
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="gmodal-header">
+        <h2>New Course</h2>
+        <button class="gmodal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="gmodal-body">
+        <div class="form-group">
+          <label class="form-label">Title *</label>
+          <input id="nc-title" class="form-input" placeholder="Course title" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea id="nc-desc" class="form-textarea" placeholder="Brief description…"></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <select id="nc-cat" class="form-select">
+              ${CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Type</label>
+            <select id="nc-type" class="form-select">
+              <option>Free</option><option>Paid</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">YouTube Video ID (optional)</label>
+          <input id="nc-yt" class="form-input" placeholder="e.g. VjinpYMUMoc" />
+          <div class="form-hint">Paste just the video ID from the YouTube URL</div>
+        </div>
+      </div>
+      <div class="gmodal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="createCourse()">Create Course</button>
+      </div>
+    </div>`);
+}
+
+function createCourse() {
+  const title = document.getElementById('nc-title')?.value.trim();
+  if (!title) { toast('Please enter a title', 'error'); return; }
+  const ytId = document.getElementById('nc-yt')?.value.trim();
+  const newCourse = {
+    id: nextCourseId(),
+    title,
+    description: document.getElementById('nc-desc')?.value.trim() || '',
+    category: document.getElementById('nc-cat')?.value || CATEGORIES[0],
+    type: document.getElementById('nc-type')?.value || 'Free',
+    contentType: ytId ? 'youtube' : 'none',
+    youtubeId: ytId || null,
+    totalPages: 0,
+  };
+  courses.unshift(newCourse);
+  sb.from('courses').upsert(courseToRow(newCourse))
+    .then(({ error }) => { if (error) console.error('Course save:', error); });
+  closeModal();
+  toast('Course created!');
+  renderAdminCourses();
+}
+
+// ─── Upload PDF Modal ─────────────────────────────────────────────────────────
+function showUploadModal() {
+  showModal(`
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="gmodal-header">
+        <h2>Upload PDF Course</h2>
+        <button class="gmodal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="gmodal-body">
+        <div class="upload-file-box" onclick="document.getElementById('pdf-file-input').click()">
+          <div style="font-size:2rem">📄</div>
+          <p>Click to select a PDF file</p>
+          <p style="font-size:.75rem;margin-top:.25rem">One PDF per upload</p>
+          <input id="pdf-file-input" type="file" accept=".pdf" style="display:none" onchange="handlePdfSelected(this)" />
+        </div>
+        <div id="upload-file-info" style="display:none;margin-bottom:1rem">
+          <div style="font-weight:600;font-size:.9rem" id="upload-file-name"></div>
+          <div style="font-size:.78rem;color:var(--text-muted)" id="upload-file-pages"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Course Title</label>
+          <input id="upload-title" class="form-input" placeholder="Auto-filled from filename" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <select id="upload-cat" class="form-select">
+              ${CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Type</label>
+            <select id="upload-type" class="form-select"><option>Free</option><option>Paid</option></select>
+          </div>
+        </div>
+        <p class="form-label" style="margin-bottom:.5rem">Assessment Questions</p>
+        <label class="upload-option selected" id="opt-ai">
+          <input type="radio" name="upload-mode" value="ai" checked onchange="selectUploadMode('ai')" />
+          <div style="flex:1">
+            <div class="upload-option-title">🤖 AI Generate</div>
+            <div class="upload-option-desc">Gemini reads the PDF and auto-generates 12 questions</div>
+          </div>
+          <button class="btn btn-outline btn-sm" id="test-api-btn" onclick="event.preventDefault();testGeminiAPI()" style="flex-shrink:0;font-size:.72rem">Test API Key</button>
+        </label>
+        <label class="upload-option" id="opt-manual">
+          <input type="radio" name="upload-mode" value="manual" onchange="selectUploadMode('manual')" />
+          <div><div class="upload-option-title">✍️ Add Manually</div><div class="upload-option-desc">Build questions yourself after upload</div></div>
+        </label>
+        <label class="upload-option" id="opt-skip">
+          <input type="radio" name="upload-mode" value="skip" onchange="selectUploadMode('skip')" />
+          <div><div class="upload-option-title">⏭ Skip for now</div><div class="upload-option-desc">Upload slides only, add questions later</div></div>
+        </label>
+      </div>
+      <div class="gmodal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="upload-submit-btn" onclick="submitUpload()" disabled>Upload</button>
+      </div>
+    </div>`);
+}
+
+function selectUploadMode(mode) {
+  ['ai','manual','skip'].forEach(m => {
+    const el = document.getElementById(`opt-${m}`);
+    if (el) el.classList.toggle('selected', m === mode);
+  });
+}
+
+let uploadedPdfData = null; // { dataUrl, arrayBuffer, numPages, extractedText }
+
+async function handlePdfSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const btn = document.getElementById('upload-submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+  showLoader('Reading PDF', 'Extracting content');
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const dataUrl = await readAsDataUrl(file);
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
+    const numPages = pdf.numPages;
+
+    // Extract text
+    let text = '';
+    for (let i = 1; i <= Math.min(numPages, 30); i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(item => item.str).join(' ') + '\n';
+    }
+
+    // Render first page as cover thumbnail
+    let coverUrl = null;
+    try {
+      const coverPage = await pdf.getPage(1);
+      const vp = coverPage.getViewport({ scale: 1 });
+      const scale = 320 / vp.width;
+      const viewport = coverPage.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await coverPage.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      coverUrl = canvas.toDataURL('image/jpeg', 0.8);
+    } catch(e) { /* cover optional */ }
+
+    uploadedPdfData = { file, dataUrl, numPages, extractedText: text, coverUrl };
+    hideLoader();
+
+    const titleEl = document.getElementById('upload-title');
+    if (titleEl && !titleEl.value) {
+      titleEl.value = file.name.replace(/\.pdf$/i,'').replace(/[-_]/g,' ');
+    }
+    const infoEl = document.getElementById('upload-file-info');
+    if (infoEl) { infoEl.style.display = 'block'; }
+    const nameEl = document.getElementById('upload-file-name');
+    if (nameEl) nameEl.textContent = file.name;
+    const pagesEl = document.getElementById('upload-file-pages');
+    if (pagesEl) pagesEl.textContent = `${numPages} page${numPages !== 1 ? 's' : ''} detected`;
+
+    btn.disabled = false;
+    btn.textContent = 'Upload';
+  } catch (err) {
+    hideLoader();
+    toast('Could not read PDF', 'error');
+    btn.disabled = false;
+    btn.textContent = 'Upload';
+  }
+}
+
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function submitUpload() {
+  if (!uploadedPdfData) { toast('Please select a PDF first', 'error'); return; }
+  const title = document.getElementById('upload-title')?.value.trim() || 'Untitled Course';
+  const cat   = document.getElementById('upload-cat')?.value || CATEGORIES[0];
+  const type  = document.getElementById('upload-type')?.value || 'Free';
+  const mode  = document.querySelector('input[name="upload-mode"]:checked')?.value || 'ai';
+  const courseId = nextCourseId();
+
+  closeModal();
+  showLoader('Uploading PDF', 'Saving to cloud storage');
+
+  // Upload PDF file to Supabase Storage
+  let pdfUrl = uploadedPdfData.dataUrl; // fallback to data URL if storage fails
+  let coverStorageUrl = uploadedPdfData.coverUrl || null;
+
+  try {
+    const { error: pdfErr } = await sb.storage.from('course-files')
+      .upload(`pdfs/${courseId}.pdf`, uploadedPdfData.file, { upsert: true, contentType: 'application/pdf' });
+    if (!pdfErr) {
+      const { data: { publicUrl } } = sb.storage.from('course-files').getPublicUrl(`pdfs/${courseId}.pdf`);
+      pdfUrl = publicUrl;
+    } else {
+      console.error('PDF storage upload:', pdfErr);
+    }
+
+    if (uploadedPdfData.coverUrl) {
+      const coverBlob = await fetch(uploadedPdfData.coverUrl).then(r => r.blob());
+      const { error: covErr } = await sb.storage.from('course-files')
+        .upload(`covers/${courseId}.jpg`, coverBlob, { upsert: true, contentType: 'image/jpeg' });
+      if (!covErr) {
+        const { data: { publicUrl } } = sb.storage.from('course-files').getPublicUrl(`covers/${courseId}.jpg`);
+        coverStorageUrl = publicUrl;
+      }
+    }
+  } catch (e) {
+    console.error('Storage upload error:', e);
+  }
+
+  const newCourse = {
+    id: courseId, title, description: '', category: cat, type,
+    contentType: 'pdf', totalPages: uploadedPdfData.numPages,
+    pdfDataUrl: pdfUrl, coverUrl: coverStorageUrl,
+  };
+
+  // Save course to DB
+  const { error: dbErr } = await sb.from('courses').upsert(courseToRow(newCourse));
+  if (dbErr) console.error('Course DB save:', dbErr);
+  courses.unshift(newCourse);
+
+  if (mode === 'ai') {
+    showLoader('Generating questions', 'AI is reading your PDF');
+    try {
+      const qs = await generateQuestionsAI(uploadedPdfData.extractedText, title);
+      questions[courseId] = qs;
+      await sb.from('questions').upsert({ course_id: courseId, questions_json: qs });
+      hideLoader();
+      toast(`✅ Upload complete! ${qs.length} questions generated for "${title}"`);
+    } catch(err) {
+      console.error('AI generation error:', err);
+      hideLoader();
+      toast(`AI failed: ${err.message || 'unknown error'} — course uploaded without questions.`, 'info');
+    }
+    renderAdminCourses();
+  } else if (mode === 'manual') {
+    hideLoader();
+    toast('Course uploaded! Opening question builder…');
+    renderAdminCourses();
+    requestAnimationFrame(() => requestAnimationFrame(() => showManualBuilderModal(courseId)));
+  } else {
+    hideLoader();
+    toast('Course uploaded!');
+    renderAdminCourses();
+  }
+  uploadedPdfData = null;
+}
+
+// ─── Gemini API Test ─────────────────────────────────────────────────────────
+async function testGeminiAPI() {
+  const btn = document.getElementById('test-api-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Testing…'; }
+  try {
+    const model = await autoDetectGeminiModel();
+    if (!model) throw new Error('No model found for this key');
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: 'Say exactly: GEMINI OK' }] }] }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(`${res.status}: ${data?.error?.message || res.statusText}`);
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '(no reply)';
+    toast(`✅ ${model} works! Reply: "${reply}"`, 'success');
+    if (btn) { btn.textContent = '✅ API works'; btn.disabled = false; }
+  } catch(err) {
+    console.error('Gemini test failed:', err);
+    toast(`❌ ${err.message}`, 'error');
+    if (btn) { btn.textContent = `❌ Failed`; btn.disabled = false; }
+  }
+}
+
+async function autoDetectGeminiModel() {
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
+    const data = await res.json();
+    const models = (data.models || []).map(m => m.name.replace('models/', ''));
+    const preferred = ['gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash','gemini-2.5-pro','gemini-1.5-pro','gemini-pro'];
+    return preferred.find(p => models.includes(p)) || models.find(m => m.includes('gemini')) || null;
+  } catch { return null; }
+}
+
+// ─── AI Question Generation ───────────────────────────────────────────────────
+async function generateQuestionsAI(text, courseTitle) {
+  const model = await autoDetectGeminiModel();
+  if (!model) throw new Error('No Gemini model available for this API key');
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+  console.log('Using Gemini model:', model);
+  const prompt = `You are an instructional designer. Based on this training content from "${courseTitle}", generate exactly 8 assessment questions: 5 multiple choice and 3 true/false.
+
+Return ONLY a raw JSON array. No markdown, no code blocks, no explanation, no extra text before or after. Use this exact format:
+[{"type":"mc","question":"Question here?","options":["Option A","Option B","Option C","Option D"],"correct":0},{"type":"tf","question":"True or false statement?","correct":true}]
+
+Training content:
+${text.slice(0, 4000)}`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.5, maxOutputTokens: 4096 },
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Gemini API error ${res.status}: ${err?.error?.message || res.statusText}`);
+  }
+  const data = await res.json();
+  console.log('Gemini raw response:', JSON.stringify(data).slice(0, 500));
+  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  console.log('Gemini text reply:', raw.slice(0, 400));
+  // Strip markdown code fences, backtick blocks
+  const cleaned = raw
+    .replace(/```json/gi, '').replace(/```/g, '')
+    .replace(/^[^[{]*/,'').trim();
+  const match = cleaned.match(/\[[\s\S]*/);
+  if (!match) throw new Error(`No JSON array in response. Got: "${raw.slice(0,120)}"`);
+  return repairJsonArray(match[0]);
+}
+
+function repairJsonArray(str) {
+  try { return JSON.parse(str); } catch {}
+  // Find the last complete object in the array and close it
+  let depth = 0, inString = false, escape = false, lastClose = -1;
+  for (let i = 0; i < str.length; i++) {
+    const c = str[i];
+    if (escape)          { escape = false; continue; }
+    if (c === '\\' && inString) { escape = true; continue; }
+    if (c === '"')       { inString = !inString; continue; }
+    if (inString)        continue;
+    if (c === '{')       depth++;
+    if (c === '}')       { depth--; if (depth === 0) lastClose = i; }
+  }
+  if (lastClose > -1) {
+    try { return JSON.parse(str.slice(0, lastClose + 1) + ']'); } catch {}
+  }
+  throw new Error('Could not parse or repair Gemini JSON response');
+}
+
+const FALLBACK_QUESTIONS = [
+  { type: 'mc', question: 'What is the primary focus of this course?', options: ['Skill development', 'Compliance', 'Technical training', 'Leadership'], correct: 0 },
+  { type: 'tf', question: 'The knowledge from this course is applicable to the workplace.', correct: true },
+  { type: 'mc', question: 'Which best describes a key takeaway from this course?', options: ['Improved productivity', 'Cost reduction', 'Better communication', 'All of the above'], correct: 3 },
+  { type: 'tf', question: 'Continuous learning contributes to career growth.', correct: true },
+];
+
+// ─── Manual Question Builder ──────────────────────────────────────────────────
+let builderQuestions = [];
+
+function showManualBuilderModal(courseId) {
+  builderQuestions = questions[courseId] ? JSON.parse(JSON.stringify(questions[courseId])) : [];
+  renderBuilderModal(courseId);
+}
+
+function renderBuilderModal(courseId) {
+  const course = getCourse(courseId);
+  showModal(`
+    <div class="modal" style="max-width:680px" onclick="event.stopPropagation()">
+      <div class="gmodal-header">
+        <h2>Question Builder — ${esc(course?.title || '')}</h2>
+        <button class="gmodal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="gmodal-body" style="max-height:60vh;overflow-y:auto">
+        <div id="builder-list">
+          ${builderQuestions.map((q, i) => builderQuestionHTML(q, i)).join('')}
+        </div>
+        <div style="display:flex;gap:.5rem;margin-top:.75rem">
+          <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('mc')">+ Multiple Choice</button>
+          <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('tf')">+ True/False</button>
+        </div>
+      </div>
+      <div class="gmodal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveBuilderQuestions('${courseId}')">Save Questions</button>
+      </div>
+    </div>`);
+}
+
+function builderQuestionHTML(q, i) {
+  if (q.type === 'mc') {
+    return `<div class="qbuilder-item">
+      <div class="qbuilder-item-header">
+        <span class="qbuilder-item-num">Q${i+1} · Multiple Choice</span>
+        <button class="btn btn-danger btn-sm qbuilder-item-remove" onclick="removeBuilderQ(${i})">Remove</button>
+      </div>
+      <div class="form-group" style="margin-bottom:.6rem">
+        <input class="form-input" placeholder="Question text" value="${esc(q.question)}" oninput="builderQuestions[${i}].question=this.value" />
+      </div>
+      <div class="qbuilder-options">
+        ${q.options.map((opt, j) => `
+          <div class="qbuilder-option">
+            <input type="radio" name="correct-${i}" ${q.correct===j?'checked':''} onchange="builderQuestions[${i}].correct=${j}" title="Mark as correct" />
+            <input type="text" placeholder="Option ${j+1}" value="${esc(opt)}" oninput="builderQuestions[${i}].options[${j}]=this.value" />
+          </div>`).join('')}
+      </div>
+      <div class="form-hint" style="margin-top:.4rem">Select the radio button next to the correct answer</div>
+    </div>`;
+  } else {
+    return `<div class="qbuilder-item">
+      <div class="qbuilder-item-header">
+        <span class="qbuilder-item-num">Q${i+1} · True/False</span>
+        <button class="btn btn-danger btn-sm qbuilder-item-remove" onclick="removeBuilderQ(${i})">Remove</button>
+      </div>
+      <div class="form-group" style="margin-bottom:.6rem">
+        <input class="form-input" placeholder="Question text" value="${esc(q.question)}" oninput="builderQuestions[${i}].question=this.value" />
+      </div>
+      <div style="display:flex;gap:.75rem">
+        <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer">
+          <input type="radio" name="tf-${i}" ${q.correct===true?'checked':''} onchange="builderQuestions[${i}].correct=true" /> True
+        </label>
+        <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer">
+          <input type="radio" name="tf-${i}" ${q.correct===false?'checked':''} onchange="builderQuestions[${i}].correct=false" /> False
+        </label>
+      </div>
+    </div>`;
+  }
+}
+
+function addBuilderQuestion(type) {
+  if (type === 'mc') {
+    builderQuestions.push({ type: 'mc', question: '', options: ['','','',''], correct: 0 });
+  } else {
+    builderQuestions.push({ type: 'tf', question: '', correct: true });
+  }
+  const list = document.getElementById('builder-list');
+  if (list) {
+    const div = document.createElement('div');
+    div.innerHTML = builderQuestionHTML(builderQuestions[builderQuestions.length-1], builderQuestions.length-1);
+    list.appendChild(div.firstElementChild);
+  }
+}
+
+function removeBuilderQ(i) {
+  builderQuestions.splice(i, 1);
+  const courseId = document.querySelector('[onclick^="saveBuilderQuestions"]')?.getAttribute('onclick')?.match(/'(.+?)'/)?.[1];
+  if (courseId) renderBuilderModal(courseId);
+}
+
+function saveBuilderQuestions(courseId) {
+  const valid = builderQuestions.filter(q => q.question.trim());
+  questions[courseId] = valid.length ? valid : undefined;
+  if (!valid.length) {
+    delete questions[courseId];
+    sb.from('questions').delete().eq('course_id', courseId)
+      .then(({ error }) => { if (error) console.error('Questions delete:', error); });
+  } else {
+    sb.from('questions').upsert({ course_id: courseId, questions_json: valid })
+      .then(({ error }) => { if (error) console.error('Questions save:', error); });
+  }
+  closeModal();
+  toast(`${valid.length} question${valid.length!==1?'s':''} saved!`);
+  renderAdminCourses();
+}
+
+// ─── Add Questions to existing course ────────────────────────────────────────
+function showAddQuestionsModal(courseId) {
+  showModal(`
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="gmodal-header">
+        <h2>${questions[courseId] ? 'Edit Questions' : 'Add Questions'}</h2>
+        <button class="gmodal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="gmodal-body">
+        <p style="margin-bottom:1rem;font-size:.9rem;color:var(--text-muted)">How would you like to add questions?</p>
+        ${getCourse(courseId)?.contentType === 'pdf' && getCourse(courseId)?.pdfDataUrl ? `
+        <button class="btn btn-accent" style="width:100%;margin-bottom:.65rem;justify-content:center" onclick="aiGenerateForExisting('${courseId}')">
+          🤖 AI Generate from PDF
+        </button>` : ''}
+        <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="closeModal();setTimeout(()=>showManualBuilderModal('${courseId}'),200)">
+          ✍️ Manual Builder
+        </button>
+      </div>
+      <div class="gmodal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      </div>
+    </div>`);
+}
+
+async function aiGenerateForExisting(courseId) {
+  const course = getCourse(courseId);
+  if (!course?.pdfDataUrl) { toast('No PDF attached', 'error'); return; }
+  closeModal();
+  showLoader('Generating questions', 'AI is reading your PDF');
+  try {
+    const arrayBuffer = await (await fetch(course.pdfDataUrl)).arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let text = '';
+    for (let i = 1; i <= Math.min(pdf.numPages, 30); i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(item => item.str).join(' ') + '\n';
+    }
+    const qs = await generateQuestionsAI(text, course.title);
+    questions[courseId] = qs;
+    await sb.from('questions').upsert({ course_id: courseId, questions_json: qs });
+    hideLoader();
+    toast(`${qs.length} questions generated!`);
+    renderAdminCourses();
+  } catch(err) {
+    console.error('AI generation error:', err);
+    hideLoader();
+    toast(`AI failed: ${err.message || 'check console'}`, 'error');
+  }
+}
+
+// ─── Assign Modal ─────────────────────────────────────────────────────────────
+function showAssignModal(courseId) {
+  const course = getCourse(courseId);
+  const allLearners = learners();
+  showModal(`
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="gmodal-header">
+        <h2>Assign: ${esc(course?.title || '')}</h2>
+        <button class="gmodal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="gmodal-body">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+          <span style="font-size:.85rem;color:var(--text-muted)">Select team members</span>
+          <button class="btn btn-outline btn-sm" onclick="toggleAssignAll('${courseId}')">Assign All</button>
+        </div>
+        <div class="assignee-list" id="assignee-list">
+          ${allLearners.map(u => `
+            <div class="assignee-item ${isAssigned(u.id,courseId)?'selected':''}" id="assignee-${u.id}" onclick="toggleAssignee('${u.id}','${courseId}')">
+              <input type="checkbox" class="assignee-check" ${isAssigned(u.id,courseId)?'checked':''} />
+              <div class="user-avatar" style="background:${u.color};width:32px;height:32px;font-size:.72rem">${initials(u.name)}</div>
+              <div><div style="font-weight:600;font-size:.88rem">${esc(u.name)}</div><div style="font-size:.75rem;color:var(--text-muted)">${esc(u.role)}</div></div>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div class="gmodal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Done</button>
+      </div>
+    </div>`);
+}
+
+function toggleAssignee(userId, courseId) {
+  if (!assignments[userId]) assignments[userId] = [];
+  const idx = assignments[userId].indexOf(courseId);
+  if (idx > -1) {
+    assignments[userId].splice(idx, 1);
+    sb.from('assignments').delete().eq('user_id', userId).eq('course_id', courseId)
+      .then(({ error }) => { if (error) console.error('Assignment delete:', error); });
+  } else {
+    assignments[userId].push(courseId);
+    sb.from('assignments').upsert({ user_id: userId, course_id: courseId })
+      .then(({ error }) => { if (error) console.error('Assignment insert:', error); });
+  }
+  const item = document.getElementById(`assignee-${userId}`);
+  const check = item?.querySelector('input[type="checkbox"]');
+  if (item) item.classList.toggle('selected', isAssigned(userId, courseId));
+  if (check) check.checked = isAssigned(userId, courseId);
+}
+
+function toggleAssignAll(courseId) {
+  const allAssigned = learners().every(u => isAssigned(u.id, courseId));
+  learners().forEach(u => {
+    if (!assignments[u.id]) assignments[u.id] = [];
+    if (allAssigned) {
+      assignments[u.id] = assignments[u.id].filter(cid => cid !== courseId);
+      sb.from('assignments').delete().eq('user_id', u.id).eq('course_id', courseId)
+        .then(({ error }) => { if (error) console.error('Assignment delete:', error); });
+    } else if (!isAssigned(u.id, courseId)) {
+      assignments[u.id].push(courseId);
+      sb.from('assignments').upsert({ user_id: u.id, course_id: courseId })
+        .then(({ error }) => { if (error) console.error('Assignment insert:', error); });
+    }
+  });
+  showAssignModal(courseId);
+}
+
+// ─── Admin Team Progress ──────────────────────────────────────────────────────
+function renderAdminTeam() {
+  setTitle('Team Progress');
+  setMain(`
+    <div class="page-header"><h1>Team Progress</h1><p>Track how each team member is progressing</p></div>
+    <div class="member-grid">
+      ${learners().map((u, i) => {
+        const assigned = getUserAssignments(u.id).length;
+        const done     = userCompletions(u.id);
+        const avg      = userAvgProgress(u.id);
+        const badgeColor = done === assigned && assigned > 0 ? '#2e7d32' : done > 0 ? '#e65100' : '#757575';
+        return `<div class="member-card" style="animation-delay:${i*0.07}s">
+          <div class="member-card-top">
+            <div class="user-avatar" style="background:${u.color};width:44px;height:44px">${initials(u.name)}</div>
+            <div class="member-info">
+              <div class="member-name">${esc(u.name)}</div>
+              <div class="member-role">${esc(u.role)}</div>
+            </div>
+            <span class="badge" style="background:${badgeColor};color:white">${done}/${assigned}</span>
+          </div>
+          <div class="member-stats">
+            <span><strong>${assigned}</strong> assigned</span>
+            <span><strong>${done}</strong> completed</span>
+            <span><strong>${avg}%</strong> avg</span>
+          </div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar" style="width:${avg}%"></div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`);
+}
+
+// ─── Leaderboard (shared admin/learner) ───────────────────────────────────────
+function renderLeaderboard(isAdmin, filterCourseId) {
+  setTitle('Leaderboard');
+  const medals = ['🥇','🥈','🥉'];
+  const allCourses = courses.filter(c => c.published !== false);
+
+  // Overall ranking by XP
+  const overallRanked = [...learners()]
+    .map(u => ({ ...u, xp: userXP(u.id), level: userLevel(u.id), badges: userBadges(u.id), done: userCompletions(u.id) }))
+    .sort((a,b) => b.xp - a.xp);
+
+  let perModuleRanked = null;
+  if (filterCourseId) {
+    const course = getCourse(filterCourseId);
+    perModuleRanked = [...learners()]
+      .filter(u => isAssigned(u.id, filterCourseId))
+      .map(u => {
+        const p = getProgress(u.id, filterCourseId);
+        return { ...u, score: p.score ?? null, passed: p.passed, completed: p.completed };
+      })
+      .sort((a,b) => {
+        if (b.score !== null && a.score === null) return 1;
+        if (a.score !== null && b.score === null) return -1;
+        return (b.score ?? -1) - (a.score ?? -1);
+      });
+  }
+
+  const filterBar = `
+    <div style="margin-bottom:1.25rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+      <label style="font-weight:600;font-size:.9rem">Filter by module:</label>
+      <select onchange="renderLeaderboard(${isAdmin}, this.value || null)" style="padding:.4rem .75rem;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--text);font-size:.9rem;cursor:pointer">
+        <option value="" ${!filterCourseId ? 'selected' : ''}>Overall</option>
+        ${allCourses.map(c => `<option value="${c.id}" ${filterCourseId === c.id ? 'selected' : ''}>${esc(c.title)}</option>`).join('')}
+      </select>
+    </div>`;
+
+  if (filterCourseId && perModuleRanked) {
+    const course = getCourse(filterCourseId);
+    setMain(`
+      <div class="page-header"><h1>🏆 Leaderboard</h1><p>Rankings for: <strong>${esc(course?.title || filterCourseId)}</strong></p></div>
+      ${filterBar}
+      <div class="leaderboard-list">
+        ${perModuleRanked.length === 0
+          ? `<div class="empty-state" style="padding:2rem"><span class="empty-icon">👥</span><p>No learners assigned to this module yet.</p></div>`
+          : perModuleRanked.map((u, i) => {
+              const scoreDisplay = u.score !== null ? `${u.score}%` : '—';
+              const statusBadge = u.completed
+                ? `<span class="lb-status-badge ${u.passed?'pass':'fail'}">${u.passed ? '✅ Passed' : '❌ Failed'}</span>`
+                : `<span class="lb-status-badge">Not taken</span>`;
+              return `<div class="lb-item ${i===0&&u.score!==null?'top1':''}" style="animation-delay:${i*0.07}s">
+                <div class="lb-rank">${u.score !== null ? (medals[i] || `#${i+1}`) : '—'}</div>
+                <div class="user-avatar" style="background:${u.color};width:42px;height:42px">${initials(u.name)}</div>
+                <div class="lb-info"><div class="lb-name">${esc(u.name)}</div><div class="lb-role">${esc(u.role)}</div></div>
+                <div>${statusBadge}</div>
+                <div class="lb-stats"><strong>${scoreDisplay}</strong> score</div>
+              </div>`;
+            }).join('')}
+      </div>`);
+    return;
+  }
+
+  setMain(`
+    <div class="page-header"><h1>🏆 Leaderboard</h1><p>Team XP rankings & achievements</p></div>
+    ${filterBar}
+    <div class="leaderboard-list">
+      ${overallRanked.map((u, i) => {
+        const next = userNextLevel(u.id);
+        const xpToNext = next ? `<div style="font-size:.7rem;color:var(--text-muted)">${next.xpNeeded} XP to ${next.label}</div>` : `<div style="font-size:.7rem;color:var(--accent);font-weight:700">Max Level!</div>`;
+        const badgeIcons = u.badges.map(b => `<span title="${b.label}: ${b.desc}" style="font-size:1.1rem;cursor:default">${b.icon}</span>`).join('');
+        return `<div class="lb-item ${i===0?'top1':''}" style="animation-delay:${i*0.07}s">
+          <div class="lb-rank">${medals[i] || `#${i+1}`}</div>
+          <div class="user-avatar" style="background:${u.color};width:42px;height:42px">${initials(u.name)}</div>
+          <div class="lb-info">
+            <div class="lb-name">${esc(u.name)}</div>
+            <div class="lb-role">${u.level.icon} ${u.level.label} &nbsp;·&nbsp; ${esc(u.role)}</div>
+          </div>
+          <div style="display:flex;gap:.3rem;align-items:center;flex-wrap:wrap">${badgeIcons}</div>
+          <div style="text-align:right;min-width:90px">
+            <div style="font-size:1.1rem;font-weight:800;color:var(--accent)">${u.xp} XP</div>
+            ${xpToNext}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="badges-legend">
+      <p class="section-heading">Badges</p>
+      <div class="badges-grid">
+        ${BADGES.map(b => `
+          <div class="badge-card">
+            <span class="badge-card-icon">${b.icon}</span>
+            <div><div style="font-weight:700;font-size:.85rem">${b.label}</div><div style="font-size:.75rem;color:var(--text-muted)">${b.desc}</div></div>
+          </div>`).join('')}
+      </div>
+    </div>`);
+}
+
+// ─── Learner Dashboard ────────────────────────────────────────────────────────
+function renderLearnerDashboard() {
+  setTitle('Dashboard');
+  const uid = currentUser.id;
+  const assigned = getUserAssignments(uid);
+  const done     = userCompletions(uid);
+  const avg      = userAvgProgress(uid);
+
+  const continueList = assigned
+    .filter(cid => !getProgress(uid, cid).completed)
+    .slice(0, 4);
+
+  setMain(`
+    <div class="page-header fade-up">
+      <h1>Welcome, ${esc(currentUser.name.split(' ')[0])} 👋</h1>
+      <p>${userLevel(uid).icon} ${userLevel(uid).label} &nbsp;·&nbsp; ${userXP(uid)} XP${userNextLevel(uid) ? ` &nbsp;·&nbsp; ${userNextLevel(uid).xpNeeded} XP to ${userNextLevel(uid).label}` : ' &nbsp;·&nbsp; <strong style="color:var(--accent)">Max Level!</strong>'}</p>
+    </div>
+    ${userBadges(uid).length ? `<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem">${userBadges(uid).map(b=>`<span title="${b.desc}" style="background:#e8f5e9;color:#1B3A1B;padding:.25rem .65rem;border-radius:20px;font-size:.8rem;font-weight:700;cursor:default">${b.icon} ${b.label}</span>`).join('')}</div>` : ''}
+    <div class="stats-grid">
+      ${statCard('Assigned', assigned.length, '', '#1B3A1B', 0)}
+      ${statCard('Completed', done, '', '#2d5a2d', 1)}
+      ${statCard('Avg Progress', avg, '%', '#3a7a3a', 2)}
+    </div>
+    <p class="section-heading">Continue Learning</p>
+    ${continueList.length ? `
+      <div class="continue-list">
+        ${continueList.map(cid => {
+          const c = getCourse(cid); if (!c) return '';
+          const p = getProgress(uid, cid);
+          const pct = c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0;
+          return `<div class="continue-item">
+            <div style="font-size:1.5rem">${CAT_EMOJI[c.category]||'📚'}</div>
+            <div class="continue-item-info">
+              <div class="continue-item-title">${esc(c.title)}</div>
+              <div class="continue-item-meta">${esc(c.category)} · ${pct}% complete</div>
+            </div>
+            <div class="continue-item-progress">
+              <div class="progress-bar-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>
+            </div>
+            <a href="#/course/${c.id}" class="btn btn-primary btn-sm">${p.currentSlide > 0 ? 'Continue' : 'Start'}</a>
+          </div>`;
+        }).join('')}
+      </div>` : `
+      <div class="empty-state" style="padding:2rem">
+        <span class="empty-icon">🎉</span>
+        <h2>${done > 0 ? 'All caught up!' : 'No courses assigned yet'}</h2>
+        <p>${done > 0 ? 'You\'ve completed all your assigned courses.' : 'Ask your admin to assign courses to you.'}</p>
+        <a href="#/learner/library" class="btn btn-primary" style="margin-top:1rem">Browse Library</a>
+      </div>`}
+    <p class="section-heading">Completed Courses</p>
+    ${done > 0 ? `<div class="course-grid">
+      ${assigned.filter(cid => getProgress(uid, cid).completed).map(cid => {
+        const c = getCourse(cid); if (!c) return '';
+        return `<div class="course-card">
+          ${courseCoverHTML(c)}
+          <div class="course-card-body">
+            <div class="course-card-badges">${typeBadge(c.type)} <span class="badge badge-done">✓ Done</span></div>
+            <div class="course-card-title">${esc(c.title)}</div>
+            <div class="course-card-meta">${CAT_EMOJI[c.category]||'📚'} ${esc(c.category)}</div>
+            <div class="course-card-actions">
+              <a href="#/course/${c.id}" class="btn btn-outline btn-sm">Review</a>
+              <button class="btn btn-outline btn-sm" onclick="showCertificate('${c.id}')">🏆 Certificate</button>
+            </div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>` : `<p style="color:var(--text-muted);font-size:.88rem">No completions yet.</p>`}`);
+
+  document.querySelectorAll('.stat-value[data-target]').forEach(el => {
+    animateCount(el, parseInt(el.dataset.target));
+  });
+}
+
+// ─── Learner Library ──────────────────────────────────────────────────────────
+function renderLearnerLibrary(filterQ = '', filterCat = '', filterType = '') {
+  setTitle('Course Library');
+  const uid = currentUser.id;
+  let filtered = courses.filter(c => {
+    const matchQ    = !filterQ    || c.title.toLowerCase().includes(filterQ.toLowerCase()) || c.category.toLowerCase().includes(filterQ.toLowerCase());
+    const matchCat  = !filterCat  || c.category === filterCat;
+    const matchType = !filterType || c.type === filterType;
+    return matchQ && matchCat && matchType;
+  });
+
+  setMain(`
+    <div class="page-header"><h1>Course Library</h1><p>Explore all available training content</p></div>
+    <div class="toolbar">
+      <div class="toolbar-search">
+        <svg viewBox="0 0 20 20" fill="none"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.5"/><path d="M13 13L17 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input placeholder="Search courses…" value="${esc(filterQ)}" oninput="renderLearnerLibrary(this.value,document.getElementById('lib-cat')?.value,document.getElementById('lib-type')?.value)" />
+      </div>
+      <select class="toolbar-select" id="lib-cat" onchange="renderLearnerLibrary(document.querySelector('.toolbar-search input')?.value,this.value,document.getElementById('lib-type')?.value)">
+        <option value="">All Categories</option>
+        ${CATEGORIES.map(c => `<option value="${esc(c)}" ${filterCat===c?'selected':''}>${esc(c)}</option>`).join('')}
+      </select>
+      <select class="toolbar-select" id="lib-type" onchange="renderLearnerLibrary(document.querySelector('.toolbar-search input')?.value,document.getElementById('lib-cat')?.value,this.value)">
+        <option value="">Free &amp; Paid</option>
+        <option value="Free" ${filterType==='Free'?'selected':''}>Free</option>
+        <option value="Paid" ${filterType==='Paid'?'selected':''}>Paid</option>
+      </select>
+    </div>
+    <div class="course-grid">
+      ${filtered.length ? filtered.map((c, i) => learnerCourseCard(c, uid, i)).join('') : '<div class="empty-state"><span class="empty-icon">📭</span><h2>No courses found</h2><p>Try different filters.</p></div>'}
+    </div>`);
+}
+
+function learnerCourseCard(c, uid, i = 0) {
+  const p      = getProgress(uid, c.id);
+  const pct    = c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0;
+  const qs     = questions[c.id];
+  const assigned = isAssigned(uid, c.id);
+  const label  = p.completed ? 'Review' : p.currentSlide > 0 ? 'Continue' : 'Start';
+  return `<div class="course-card" style="animation-delay:${i*0.04}s">
+    ${courseCoverHTML(c)}
+    <div class="course-card-body">
+      <div class="course-card-badges">
+        ${typeBadge(c.type)} ${contentBadge(c.contentType)}
+        ${qs ? `<span class="badge badge-q">${qs.length} Q</span>` : ''}
+        ${p.completed ? '<span class="badge badge-done">✓ Done</span>' : ''}
+      </div>
+      <div class="course-card-title">${esc(c.title)}</div>
+      <div class="course-card-desc">${esc(c.description)}</div>
+      <div class="course-card-meta">${CAT_EMOJI[c.category]||'📚'} ${esc(c.category)}</div>
+      ${assigned && c.totalPages ? `<div class="progress-bar-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>` : ''}
+      <div class="course-card-actions">
+        ${assigned ? `<a href="#/course/${c.id}" class="btn btn-primary btn-sm">${label}</a>` : `<span class="btn btn-outline btn-sm" style="opacity:.6;cursor:default">Not Assigned</span>`}
+        ${p.completed ? `<button class="btn btn-outline btn-sm" onclick="showCertificate('${c.id}')">🏆 Cert</button>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+// ─── My Learning ──────────────────────────────────────────────────────────────
+function renderMyLearning() {
+  setTitle('My Learning');
+  const uid = currentUser.id;
+  const assigned = getUserAssignments(uid);
+  setMain(`
+    <div class="page-header"><h1>My Learning</h1><p>${assigned.length} course${assigned.length!==1?'s':''} assigned to you</p></div>
+    ${assigned.length ? `<div class="continue-list">
+      ${assigned.map(cid => {
+        const c = getCourse(cid); if (!c) return '';
+        const p = getProgress(uid, cid);
+        const pct = c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : p.completed ? 100 : 0;
+        const label = p.completed ? 'Review' : p.currentSlide > 0 ? 'Continue' : 'Start';
+        return `<div class="continue-item">
+          <div style="font-size:1.5rem">${CAT_EMOJI[c.category]||'📚'}</div>
+          <div class="continue-item-info">
+            <div class="continue-item-title">${esc(c.title)}</div>
+            <div class="continue-item-meta">${esc(c.category)} · ${esc(c.type)} ${p.completed ? '· ✓ Completed' : `· ${pct}%`}</div>
+          </div>
+          <div class="continue-item-progress">
+            <div class="progress-bar-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>
+          </div>
+          <a href="#/course/${c.id}" class="btn btn-primary btn-sm">${label}</a>
+        </div>`;
+      }).join('')}
+    </div>` : `
+    <div class="empty-state">
+      <span class="empty-icon">📋</span>
+      <h2>No courses assigned yet</h2>
+      <p>Your admin will assign courses to you. In the meantime, browse the library.</p>
+      <a href="#/learner/library" class="btn btn-primary" style="margin-top:1rem">Browse Library</a>
+    </div>`}`);
+}
+
+// ─── Course Viewer ────────────────────────────────────────────────────────────
+async function renderCourseViewer(courseId) {
+  viewerCourseId = courseId;
+  const course = getCourse(courseId);
+  if (!course) { navigate(currentUser.isAdmin ? '/admin/courses' : '/learner/library'); return; }
+
+  const uid = currentUser.id;
+  const p   = getProgress(uid, courseId);
+  viewerPage = Math.max(1, p.currentSlide || 1);
+
+  document.getElementById('app').innerHTML = `
+    <div class="viewer-page" id="viewer-page">
+      <div class="viewer-topbar">
+        <button class="viewer-back" onclick="leaveViewer()">← Back</button>
+        <div class="viewer-title">${esc(course.title)}</div>
+        ${course.totalPages ? `
+          <div class="viewer-progress-wrap">
+            <div class="viewer-progress-bar" id="viewer-prog-bar" style="width:${Math.round((viewerPage/course.totalPages)*100)}%"></div>
+          </div>
+          <span class="viewer-progress-label" id="viewer-prog-label">${viewerPage}/${course.totalPages}</span>
+        ` : ''}
+        ${questions[courseId] ? `<button class="viewer-btn accent" onclick="navigate('/assessment/${courseId}')" style="margin-left:.5rem">📝 Assessment</button>` : ''}
+      </div>
+      <div class="viewer-body" id="viewer-body">
+        ${viewerBodyHTML(course)}
+      </div>
+      ${course.contentType === 'pdf' ? `
+        <div class="viewer-bottombar" id="viewer-bottombar">
+          <button class="viewer-btn" id="viewer-prev" onclick="pdfPrevPage()" ${viewerPage<=1?'disabled':''}>← Prev</button>
+          <div class="viewer-dots" id="viewer-dots"></div>
+          <span class="viewer-slide-counter" id="viewer-counter">Slide ${viewerPage} of ${course.totalPages}</span>
+          <button class="viewer-btn" id="viewer-next" onclick="pdfNextPage()">Next →</button>
+        </div>` : course.contentType === 'youtube' ? `
+        <div class="viewer-bottombar" style="justify-content:center">
+          ${questions[courseId] ? `<button class="viewer-btn accent" onclick="navigate('/assessment/${courseId}')">Take Assessment →</button>` : ''}
+        </div>` : `
+        <div class="viewer-bottombar" style="justify-content:center">
+          ${questions[courseId] ? `<button class="viewer-btn accent" onclick="navigate('/assessment/${courseId}')">Take Assessment →</button>` : ''}
+        </div>`}
+    </div>`;
+
+  if (course.contentType === 'pdf' && course.pdfDataUrl) {
+    await initPdfViewer(course);
+  }
+}
+
+function viewerBodyHTML(course) {
+  if (course.contentType === 'pdf') {
+    return `<canvas id="pdf-canvas"></canvas>`;
+  } else if (course.contentType === 'youtube') {
+    setViewerProgress(currentUser.id, course.id, { completed: true });
+    return `<div class="viewer-youtube"><iframe src="https://www.youtube.com/embed/${esc(course.youtubeId)}?autoplay=0&rel=0" allowfullscreen></iframe></div>`;
+  } else {
+    return `<div class="viewer-no-content">
+      <span class="big-icon">📚</span>
+      <h2>Content Coming Soon</h2>
+      <p style="margin-top:.5rem">This course doesn't have content yet.</p>
+    </div>`;
+  }
+}
+
+async function initPdfViewer(course) {
+  try {
+    viewerPdfDoc = await pdfjsLib.getDocument(course.pdfDataUrl).promise;
+    updatePdfDots(course.totalPages);
+    await renderPdfPage(viewerPage);
+  } catch {
+    document.getElementById('viewer-body').innerHTML = `<div class="viewer-no-content"><span class="big-icon">⚠️</span><h2>Could not load PDF</h2></div>`;
+  }
+}
+
+async function renderPdfPage(pageNum) {
+  if (!viewerPdfDoc) return;
+  const canvas = document.getElementById('pdf-canvas');
+  if (!canvas) return;
+  canvas.classList.add('fading');
+  await new Promise(r => setTimeout(r, 120));
+  const page     = await viewerPdfDoc.getPage(pageNum);
+  const scale    = Math.min(
+    (window.innerWidth - 48) / page.getViewport({ scale: 1 }).width,
+    (window.innerHeight - 180) / page.getViewport({ scale: 1 }).height,
+    2
+  );
+  const viewport = page.getViewport({ scale });
+  canvas.width   = viewport.width;
+  canvas.height  = viewport.height;
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+  canvas.classList.remove('fading');
+
+  // Update progress bar + counter
+  const course = getCourse(viewerCourseId);
+  if (course) {
+    const pct = Math.round((pageNum / course.totalPages) * 100);
+    document.getElementById('viewer-prog-bar')?.style  && (document.getElementById('viewer-prog-bar').style.width = pct + '%');
+    const lbl = document.getElementById('viewer-prog-label');
+    if (lbl) lbl.textContent = `${pageNum}/${course.totalPages}`;
+    const counter = document.getElementById('viewer-counter');
+    if (counter) counter.textContent = `Slide ${pageNum} of ${course.totalPages}`;
+  }
+  updatePdfDots(course?.totalPages || 0);
+  updatePdfNavBtns(pageNum, course?.totalPages || 1);
+  setProgress(currentUser.id, viewerCourseId, { currentSlide: pageNum });
+}
+
+function updatePdfDots(total) {
+  const dotsEl = document.getElementById('viewer-dots');
+  if (!dotsEl || total > 30) return;
+  dotsEl.innerHTML = Array.from({ length: total }, (_, i) =>
+    `<button class="viewer-dot ${i+1===viewerPage?'active':''}" onclick="pdfGoTo(${i+1})"></button>`
+  ).join('');
+}
+
+function updatePdfNavBtns(page, total) {
+  const prev = document.getElementById('viewer-prev');
+  const next = document.getElementById('viewer-next');
+  if (prev) prev.disabled = page <= 1;
+  if (next) {
+    if (page >= total) {
+      next.textContent = questions[viewerCourseId] ? 'Take Assessment →' : 'Finish';
+      next.classList.add('accent');
+      next.onclick = () => {
+        setProgress(currentUser.id, viewerCourseId, { currentSlide: total });
+        questions[viewerCourseId] ? navigate(`/assessment/${viewerCourseId}`) : leaveViewer();
+      };
+    } else {
+      next.textContent = 'Next →';
+      next.classList.remove('accent');
+      next.onclick = pdfNextPage;
+    }
+  }
+}
+
+async function pdfNextPage() {
+  const course = getCourse(viewerCourseId);
+  if (!course || viewerPage >= course.totalPages) return;
+  viewerPage++;
+  await renderPdfPage(viewerPage);
+}
+
+async function pdfPrevPage() {
+  if (viewerPage <= 1) return;
+  viewerPage--;
+  await renderPdfPage(viewerPage);
+}
+
+async function pdfGoTo(n) {
+  viewerPage = n;
+  await renderPdfPage(viewerPage);
+}
+
+function setViewerProgress(uid, courseId, update) {
+  setProgress(uid, courseId, update);
+}
+
+function leaveViewer() {
+  navigate(currentUser.isAdmin ? '/admin/courses' : '/learner/my-learning');
+}
+
+// ─── Assessment ───────────────────────────────────────────────────────────────
+function renderAssessmentPage(courseId) {
+  const course = getCourse(courseId);
+  const qs = questions[courseId] || FALLBACK_QUESTIONS;
+
+  document.getElementById('app').innerHTML = `
+    <div style="min-height:100vh;background:var(--bg);padding:2rem 1rem">
+      <div class="assessment-page">
+        <div style="margin-bottom:1.5rem">
+          <button class="btn btn-outline btn-sm" onclick="navigate('/course/${courseId}')">← Back to Course</button>
+        </div>
+        <div class="assessment-header">
+          <h1>Assessment: ${esc(course?.title || '')}</h1>
+          <p>${qs.length} question${qs.length!==1?'s':''} · Pass score: 80%</p>
+        </div>
+        <form id="assessment-form">
+          ${qs.map((q, i) => questionHTML(q, i)).join('')}
+        </form>
+        <div class="assessment-footer">
+          <button class="btn btn-accent" id="submit-btn" onclick="submitAssessment('${courseId}')">Submit Assessment</button>
+          <span id="answer-count" style="font-size:.85rem;color:var(--text-muted)">0 of ${qs.length} answered</span>
+        </div>
+      </div>
+    </div>`;
+
+  // Track answer progress
+  document.getElementById('assessment-form').addEventListener('change', () => {
+    const answered = qs.filter((q, i) => document.querySelector(`input[name="q${i}"]:checked`)).length;
+    const lbl = document.getElementById('answer-count');
+    if (lbl) lbl.textContent = `${answered} of ${qs.length} answered`;
+    // Clear unanswered highlights when user answers
+    document.querySelectorAll('.question-card.unanswered').forEach(el => el.classList.remove('unanswered'));
+  });
+}
+
+function questionHTML(q, i) {
+  if (q.type === 'mc') {
+    return `<div class="question-card" data-qi="${i}" style="animation-delay:${i*0.04}s">
+      <div class="question-num">Question ${i+1} · Multiple Choice</div>
+      <div class="question-text">${esc(q.question)}</div>
+      <div class="options-list">
+        ${q.options.map((opt, j) => `
+          <label class="option-item" id="opt-${i}-${j}">
+            <input type="radio" name="q${i}" value="${j}" style="accent-color:var(--accent)" onchange="highlightOption(${i},${j})" />
+            <span class="option-label">${esc(opt)}</span>
+          </label>`).join('')}
+      </div>
+    </div>`;
+  } else {
+    return `<div class="question-card" data-qi="${i}" style="animation-delay:${i*0.04}s">
+      <div class="question-num">Question ${i+1} · True / False</div>
+      <div class="question-text">${esc(q.question)}</div>
+      <div class="options-list">
+        <label class="option-item" id="opt-${i}-true">
+          <input type="radio" name="q${i}" value="true" style="accent-color:var(--accent)" onchange="highlightOption(${i},'true')" />
+          <span class="option-label">True</span>
+        </label>
+        <label class="option-item" id="opt-${i}-false">
+          <input type="radio" name="q${i}" value="false" style="accent-color:var(--accent)" onchange="highlightOption(${i},'false')" />
+          <span class="option-label">False</span>
+        </label>
+      </div>
+    </div>`;
+  }
+}
+
+function highlightOption(qIdx, val) {
+  const card = document.querySelectorAll('.question-card')[qIdx];
+  card?.querySelectorAll('.option-item').forEach(el => el.classList.remove('selected'));
+  document.getElementById(`opt-${qIdx}-${val}`)?.classList.add('selected');
+}
+
+function submitAssessment(courseId) {
+  const qs = questions[courseId] || FALLBACK_QUESTIONS;
+
+  // Validate all questions answered
+  const unanswered = [];
+  qs.forEach((q, i) => {
+    const val = document.querySelector(`input[name="q${i}"]:checked`)?.value;
+    if (val === undefined || val === null) unanswered.push(i);
+  });
+  if (unanswered.length > 0) {
+    // Highlight unanswered cards
+    document.querySelectorAll('.question-card').forEach(el => el.classList.remove('unanswered'));
+    unanswered.forEach(i => {
+      const card = document.querySelector(`.question-card[data-qi="${i}"]`);
+      if (card) card.classList.add('unanswered');
+    });
+    const nums = unanswered.map(i => `#${i + 1}`).join(', ');
+    showToast(`Please answer question${unanswered.length > 1 ? 's' : ''} ${nums} before submitting.`, 'error');
+    const firstCard = document.querySelector('.question-card.unanswered');
+    if (firstCard) firstCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+
+  let correct = 0;
+  qs.forEach((q, i) => {
+    const val = document.querySelector(`input[name="q${i}"]:checked`)?.value;
+    if (q.type === 'mc') {
+      if (parseInt(val) === q.correct) correct++;
+    } else {
+      if ((val === 'true') === q.correct) correct++;
+    }
+  });
+
+  const score = Math.round((correct / qs.length) * 100);
+  const passed = score >= 80;
+
+  setProgress(currentUser.id, courseId, { completed: passed, score, passed });
+
+  const form = document.getElementById('assessment-form');
+  const footer = document.querySelector('.assessment-footer');
+  if (form) form.querySelectorAll('input').forEach(i => i.disabled = true);
+  if (footer) footer.innerHTML = '';
+
+  // Show score
+  const container = document.querySelector('.assessment-page');
+  const scoreEl = document.createElement('div');
+  scoreEl.innerHTML = `
+    <div class="score-display">
+      <div class="score-circle ${passed?'score-pass':'score-fail'}">${score}%</div>
+      <h2 style="margin-bottom:.5rem">${passed ? '🎉 You Passed!' : '😔 Not Quite'}</h2>
+      <p style="color:var(--text-muted);margin-bottom:1.5rem">You got ${correct} out of ${qs.length} correct.</p>
+      <div style="display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap">
+        ${passed ? `<button class="btn btn-accent" onclick="showCertificate('${courseId}')">🏆 View Certificate</button>` : ''}
+        <button class="btn btn-outline" onclick="navigate('/course/${courseId}')">Review Course</button>
+        ${!passed ? `<button class="btn btn-primary" onclick="retakeAssessment('${courseId}')">Try Again</button>` : ''}
+        <button class="btn btn-outline" onclick="navigate('${currentUser.isAdmin ? '/admin/courses' : '/learner/my-learning'}')">Back</button>
+      </div>
+    </div>`;
+  container.appendChild(scoreEl);
+  scoreEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  if (passed) { confetti(); setTimeout(() => showCertificate(courseId), 700); }
+}
+
+function retakeAssessment(courseId) {
+  setProgress(currentUser.id, courseId, { completed: false, score: null, passed: false });
+  renderAssessmentPage(courseId);
+}
+
+// ─── Certificate ──────────────────────────────────────────────────────────────
+function showCertificate(courseId) {
+  const course = getCourse(courseId);
+  const p      = getProgress(currentUser.id, courseId);
+  showModal(`
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="cert-header" style="position:relative">
+        <button class="modal-close" onclick="closeModal()">✕</button>
+        <img src="assets/logos/logo-icon-white.svg" alt="Sprout" class="cert-logo" />
+        <h2>Certificate of Completion</h2>
+        <p>Sprout Learn · Sprout Solutions</p>
+      </div>
+      <div class="cert-body">
+        <div class="cert-subtitle">This certifies that</div>
+        <div class="cert-learner">${esc(currentUser.name)}</div>
+        <div class="cert-course-label">has successfully completed</div>
+        <div class="cert-course">${esc(course?.title || '')}</div>
+        <div class="cert-score">with a score of <strong>${p.score ?? 100}%</strong></div>
+        <div class="cert-sigs">
+          <div class="cert-sig">
+            <div style="height:30px"></div>
+            <div class="cert-sig-line">Date Issued<br><strong>${formatDate()}</strong></div>
+          </div>
+          <div class="cert-sig">
+            <div style="height:30px"></div>
+            <div class="cert-sig-line">Issued By<br><strong>Sprout Solutions</strong></div>
+          </div>
+        </div>
+      </div>
+      <div class="cert-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Close</button>
+        <button class="btn btn-primary" onclick="window.print()">🖨 Print</button>
+      </div>
+    </div>`);
+}
+
+// ─── Badge Helpers ────────────────────────────────────────────────────────────
+function typeBadge(type) {
+  return `<span class="badge badge-${(type||'free').toLowerCase()}">${esc(type||'Free')}</span>`;
+}
+function contentBadge(type) {
+  const map = { pdf: ['badge-pdf','PDF Slides'], youtube: ['badge-video','Video'], none: ['badge-none','Coming Soon'] };
+  const [cls, label] = map[type] || map.none;
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+// ─── SVG Icons ────────────────────────────────────────────────────────────────
+function iconHome()    { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`; }
+function iconCourses() { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`; }
+function iconUsers()   { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`; }
+function iconTrophy()  { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 9a6 6 0 0 0 12 0"/><line x1="12" y1="15" x2="12" y2="22"/><polyline points="9 22 15 22"/></svg>`; }
+function iconBook()    { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`; }

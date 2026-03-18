@@ -1,0 +1,12 @@
+{
+  "name": "sprout-learn",
+  "version": "1.0.0",
+  "description": "Sprout Learn — Native LMS for Sprout Solutions",
+  "scripts": {
+    "dev": "npx serve public -p 3001",
+    "build": "echo Static site, no build needed"
+  },
+  "devDependencies": {
+    "serve": "^14.2.4"
+  }
+}
