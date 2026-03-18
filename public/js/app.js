@@ -9,8 +9,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const GEMINI_API_KEY = 'AIzaSyA166RLYwsXh94kDZNPi0e3cooO6rA0eb4';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`;
+// Gemini key is server-side only — calls go through /api/generate-questions
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -911,44 +910,16 @@ async function testGeminiAPI() {
   }
 }
 
-async function autoDetectGeminiModel() {
-  try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
-    const data = await res.json();
-    const models = (data.models || [])
-      .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
-      .map(m => m.name.replace('models/', ''));
-    console.log('Available Gemini models:', models);
-    const preferred = ['gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash','gemini-2.5-pro','gemini-1.5-pro','gemini-pro'];
-    return preferred.find(p => models.includes(p)) || models.find(m => m.includes('flash')) || models.find(m => m.includes('gemini')) || null;
-  } catch (e) { console.error('Gemini model detect:', e); return null; }
-}
-
 // ─── AI Question Generation ───────────────────────────────────────────────────
 async function generateQuestionsAI(text, courseTitle) {
-  const model = await autoDetectGeminiModel();
-  if (!model) throw new Error('No Gemini model available for this API key');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-  console.log('Using Gemini model:', model);
-  const prompt = `You are an instructional designer. Based on this training content from "${courseTitle}", generate exactly 8 assessment questions: 5 multiple choice and 3 true/false.
-
-Return ONLY a raw JSON array. No markdown, no code blocks, no explanation, no extra text before or after. Use this exact format:
-[{"type":"mc","question":"Question here?","options":["Option A","Option B","Option C","Option D"],"correct":0},{"type":"tf","question":"True or false statement?","correct":true}]
-
-Training content:
-${text.slice(0, 4000)}`;
-
-  const res = await fetch(url, {
+  const res = await fetch('/api/generate-questions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.5, maxOutputTokens: 4096 },
-    }),
+    body: JSON.stringify({ text, courseTitle }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(`Gemini API error ${res.status}: ${err?.error?.message || res.statusText}`);
+    throw new Error(err.error || `Server error ${res.status}`);
   }
   const data = await res.json();
   console.log('Gemini raw response:', JSON.stringify(data).slice(0, 500));
