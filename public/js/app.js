@@ -16,12 +16,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 // ─── Initial Data ─────────────────────────────────────────────────────────────
-const USERS = [
-  { id: 'noel',   name: 'Noel Lorenzo Vicente',     role: 'Director of Alliance Management', isAdmin: true,  color: '#1B3A1B' },
-  { id: 'karofa', name: 'Karofa Kristine Cartaño',  role: 'Alliance Manager',                isAdmin: false, color: '#2d5a2d' },
-  { id: 'paolo',  name: 'Paolo Suarez',              role: 'Alliance Manager',                isAdmin: false, color: '#3a7a3a' },
-  { id: 'jean',   name: 'Jean Marjhorie Liquigan',   role: 'Alliance Manager',                isAdmin: false, color: '#4a9e4a' },
-];
+const USER_COLORS = ['#1B3A1B','#2d5a2d','#3a7a3a','#4a9e4a','#1565c0','#6a1b9a','#e65100','#880e4f','#00695c','#4e342e'];
+let allUsers = [];
 
 const CATEGORIES = [
   'Leadership & Management', 'HR & Compliance', 'Partner Solutions',
@@ -64,7 +60,7 @@ function formatDate(d = new Date()) {
   return d.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 function getCourse(id)   { return courses.find(c => c.id === id); }
-function getUser(id)     { return USERS.find(u => u.id === id); }
+function getUser(id)     { return allUsers.find(u => u.id === id); }
 function getProgress(userId, courseId) {
   return progress[`${userId}_${courseId}`] || { currentSlide: 0, completed: false, score: null, passed: false };
 }
@@ -95,7 +91,7 @@ function userAvgProgress(userId) {
   }, 0);
   return Math.round(total / assigned.length);
 }
-function learners() { return USERS.filter(u => !u.isAdmin); }
+function learners() { return allUsers.filter(u => !u.isAdmin); }
 
 // ─── Gamification ─────────────────────────────────────────────────────────────
 const LEVELS = [
@@ -251,12 +247,19 @@ function courseToRow(c) {
 async function loadData() {
   showLoader('Loading Sprout Learn', 'Fetching your data');
   try {
-    const [{ data: cData }, { data: qData }, { data: aData }, { data: pData }] = await Promise.all([
+    const [{ data: cData }, { data: qData }, { data: aData }, { data: pData }, { data: uData }] = await Promise.all([
       sb.from('courses').select('*').order('created_at', { ascending: false }),
       sb.from('questions').select('*'),
       sb.from('assignments').select('*'),
       sb.from('progress').select('*'),
+      sb.from('users').select('*').order('created_at', { ascending: true }),
     ]);
+
+    allUsers = uData ? uData.map((u, i) => ({
+      id: u.id, email: u.email, name: u.name || u.email.split('@')[0],
+      role: u.role, isAdmin: u.is_admin,
+      color: USER_COLORS[i % USER_COLORS.length],
+    })) : [];
 
     courses = cData ? cData.map(courseFromRow) : [];
 
@@ -283,14 +286,85 @@ async function loadData() {
   hideLoader();
 }
 
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+async function handleAuthUser(authUser) {
+  if (!authUser) { currentUser = null; return; }
+
+  const email = authUser.email || '';
+  if (!email.endsWith('@sprout.ph')) {
+    await sb.auth.signOut();
+    currentUser = null;
+    document.getElementById('app').innerHTML = `
+      <div class="login-page">
+        <div class="login-card" style="text-align:center">
+          <img src="assets/logos/sproutsol-logo-01.svg" style="height:36px;margin-bottom:1.5rem" />
+          <div style="font-size:2rem;margin-bottom:.5rem">🚫</div>
+          <div style="font-weight:700;margin-bottom:.5rem">Access Denied</div>
+          <div style="color:var(--text-muted);font-size:.9rem;margin-bottom:1.5rem">Only @sprout.ph accounts are allowed.</div>
+          <button class="btn btn-primary" onclick="googleLogin()">Try a different account</button>
+        </div>
+      </div>`;
+    return;
+  }
+
+  // Upsert user in DB
+  const existing = allUsers.find(u => u.id === authUser.id);
+  if (!existing) {
+    const name = authUser.user_metadata?.full_name || email.split('@')[0];
+    const color = USER_COLORS[allUsers.length % USER_COLORS.length];
+    const { error } = await sb.from('users').upsert({
+      id: authUser.id, email, name, role: 'Alliance Manager', is_admin: false,
+    });
+    if (!error) {
+      allUsers.push({ id: authUser.id, email, name, role: 'Alliance Manager', isAdmin: false, color });
+    }
+  }
+
+  await loadData();
+  currentUser = allUsers.find(u => u.id === authUser.id);
+  if (!currentUser) { currentUser = null; navigate('/login'); return; }
+  navigate(currentUser.isAdmin ? '/admin/dashboard' : '/learner/dashboard');
+}
+
+async function googleLogin() {
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin + window.location.pathname },
+  });
+  if (error) toast('Login failed: ' + error.message, 'error');
+}
+
+async function logout() {
+  await sb.auth.signOut();
+  currentUser = null;
+  navigate('/login');
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 window.addEventListener('hashchange', handleRoute);
 window.addEventListener('DOMContentLoaded', async () => {
-  await loadData();
+  showLoader('Loading Sprout Learn', '');
+  const { data: { session } } = await sb.auth.getSession();
+  if (session?.user) {
+    await handleAuthUser(session.user);
+  } else {
+    await loadData();
+  }
+  hideLoader();
   if (!window.location.hash || window.location.hash === '#/') {
-    window.location.hash = '#/login';
+    window.location.hash = currentUser ? (currentUser.isAdmin ? '#/admin/dashboard' : '#/learner/dashboard') : '#/login';
   }
   handleRoute();
+
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session?.user && !currentUser) {
+      await handleAuthUser(session.user);
+      handleRoute();
+    } else if (event === 'SIGNED_OUT') {
+      currentUser = null;
+      navigate('/login');
+    }
+  });
 });
 
 function navigate(route) {
@@ -333,30 +407,19 @@ function handleRoute() {
 function renderLogin() {
   document.getElementById('app').innerHTML = `
     <div class="login-page">
-      <div class="login-card">
+      <div class="login-card" style="text-align:center">
         <div class="login-logo">
           <img src="assets/logos/sproutsol-logo-01.svg" alt="Sprout Solutions" />
         </div>
         <div class="login-heading">Welcome to Sprout Learn</div>
-        <div class="login-sub">Select your profile to continue</div>
-        <div class="user-list">
-          ${USERS.map(u => `
-            <div class="user-card" onclick="login('${u.id}')">
-              <div class="user-avatar" style="background:${u.color}">${initials(u.name)}</div>
-              <div class="user-card-info">
-                <div class="user-card-name">${esc(u.name)}</div>
-                <div class="user-card-role">${esc(u.role)}</div>
-              </div>
-              ${u.isAdmin ? '<span class="user-card-badge">Admin</span>' : ''}
-            </div>`).join('')}
-        </div>
+        <div class="login-sub">Sign in with your Sprout work account to continue</div>
+        <button class="btn-google" onclick="googleLogin()">
+          <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z"/></svg>
+          Sign in with Google
+        </button>
+        <div style="margin-top:1rem;font-size:.78rem;color:var(--text-muted)">Only @sprout.ph accounts are allowed</div>
       </div>
     </div>`;
-}
-
-function login(userId) {
-  currentUser = getUser(userId);
-  navigate(currentUser.isAdmin ? '/admin/dashboard' : '/learner/dashboard');
 }
 
 function logout() {
@@ -1154,34 +1217,112 @@ function toggleAssignAll(courseId) {
 // ─── Admin Team Progress ──────────────────────────────────────────────────────
 function renderAdminTeam() {
   setTitle('Team Progress');
+  const allMembers = allUsers.filter(u => u.id !== currentUser.id);
   setMain(`
-    <div class="page-header"><h1>Team Progress</h1><p>Track how each team member is progressing</p></div>
+    <div class="page-header">
+      <h1>Team Progress</h1>
+      <p>Track and manage your team members</p>
+    </div>
+    <p class="section-heading">Learners</p>
     <div class="member-grid">
-      ${learners().map((u, i) => {
-        const assigned = getUserAssignments(u.id).length;
-        const done     = userCompletions(u.id);
-        const avg      = userAvgProgress(u.id);
-        const badgeColor = done === assigned && assigned > 0 ? '#2e7d32' : done > 0 ? '#e65100' : '#757575';
-        return `<div class="member-card" style="animation-delay:${i*0.07}s">
+      ${learners().length === 0 ? `<div class="empty-state" style="padding:2rem"><span class="empty-icon">👥</span><p>No learners yet — they'll appear here after signing in.</p></div>` :
+        learners().map((u, i) => {
+          const assigned = getUserAssignments(u.id).length;
+          const done     = userCompletions(u.id);
+          const avg      = userAvgProgress(u.id);
+          const badgeColor = done === assigned && assigned > 0 ? '#2e7d32' : done > 0 ? '#e65100' : '#757575';
+          return `<div class="member-card" style="animation-delay:${i*0.07}s">
+            <div class="member-card-top">
+              <div class="user-avatar" style="background:${u.color};width:44px;height:44px">${initials(u.name)}</div>
+              <div class="member-info">
+                <div class="member-name">${esc(u.name)}</div>
+                <div class="member-role">${esc(u.role)}</div>
+                <div style="font-size:.72rem;color:var(--text-muted)">${esc(u.email)}</div>
+              </div>
+              <span class="badge" style="background:${badgeColor};color:white">${done}/${assigned}</span>
+            </div>
+            <div class="member-stats">
+              <span><strong>${assigned}</strong> assigned</span>
+              <span><strong>${done}</strong> completed</span>
+              <span><strong>${avg}%</strong> avg</span>
+            </div>
+            <div class="progress-bar-wrap"><div class="progress-bar" style="width:${avg}%"></div></div>
+            <div style="display:flex;gap:.5rem;margin-top:.5rem">
+              <button class="btn btn-outline btn-sm" onclick="promoteUser('${u.id}')">⬆ Make Admin</button>
+              <button class="btn btn-outline btn-sm" onclick="editUserRole('${u.id}')">✏️ Role</button>
+            </div>
+          </div>`;
+        }).join('')}
+    </div>
+    <p class="section-heading" style="margin-top:1.5rem">Admins</p>
+    <div class="member-grid">
+      ${allUsers.filter(u => u.isAdmin).map((u, i) => `
+        <div class="member-card" style="animation-delay:${i*0.07}s">
           <div class="member-card-top">
             <div class="user-avatar" style="background:${u.color};width:44px;height:44px">${initials(u.name)}</div>
             <div class="member-info">
               <div class="member-name">${esc(u.name)}</div>
               <div class="member-role">${esc(u.role)}</div>
+              <div style="font-size:.72rem;color:var(--text-muted)">${esc(u.email)}</div>
             </div>
-            <span class="badge" style="background:${badgeColor};color:white">${done}/${assigned}</span>
+            <span class="badge badge-done">Admin</span>
           </div>
-          <div class="member-stats">
-            <span><strong>${assigned}</strong> assigned</span>
-            <span><strong>${done}</strong> completed</span>
-            <span><strong>${avg}%</strong> avg</span>
-          </div>
-          <div class="progress-bar-wrap">
-            <div class="progress-bar" style="width:${avg}%"></div>
-          </div>
-        </div>`;
-      }).join('')}
+          ${u.id !== currentUser.id ? `<div style="margin-top:.5rem"><button class="btn btn-outline btn-sm" onclick="demoteUser('${u.id}')">⬇ Make Learner</button></div>` : '<div style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem">That\'s you</div>'}
+        </div>`).join('')}
     </div>`);
+}
+
+async function promoteUser(userId) {
+  const u = getUser(userId);
+  if (!u || !confirm(`Make ${u.name} an Admin?`)) return;
+  await sb.from('users').update({ is_admin: true }).eq('id', userId);
+  u.isAdmin = true;
+  toast(`${u.name} is now an Admin`);
+  renderAdminTeam();
+}
+
+async function demoteUser(userId) {
+  const u = getUser(userId);
+  if (!u || !confirm(`Remove Admin from ${u.name}?`)) return;
+  await sb.from('users').update({ is_admin: false }).eq('id', userId);
+  u.isAdmin = false;
+  toast(`${u.name} is now a Learner`);
+  renderAdminTeam();
+}
+
+function editUserRole(userId) {
+  const u = getUser(userId);
+  if (!u) return;
+  showModal(`
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="gmodal-header"><h2>Edit Role</h2><button class="gmodal-close" onclick="closeModal()">✕</button></div>
+      <div class="gmodal-body">
+        <div class="form-group">
+          <label class="form-label">Name</label>
+          <input id="edit-name" class="form-input" value="${esc(u.name)}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Job Title</label>
+          <input id="edit-role" class="form-input" value="${esc(u.role)}" />
+        </div>
+      </div>
+      <div class="gmodal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveUserRole('${userId}')">Save</button>
+      </div>
+    </div>`);
+}
+
+async function saveUserRole(userId) {
+  const name = document.getElementById('edit-name')?.value.trim();
+  const role = document.getElementById('edit-role')?.value.trim();
+  if (!name) { toast('Name required', 'error'); return; }
+  await sb.from('users').update({ name, role }).eq('id', userId);
+  const u = getUser(userId);
+  if (u) { u.name = name; u.role = role; }
+  closeModal();
+  toast('Saved!');
+  renderAdminTeam();
 }
 
 // ─── Leaderboard (shared admin/learner) ───────────────────────────────────────

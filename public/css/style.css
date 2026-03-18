@@ -110,6 +110,15 @@ img { max-width: 100%; }
 .login-logo-text span { color: var(--accent-dark); }
 .login-heading { font-size: 1.05rem; font-weight: 600; color: var(--text); margin-bottom: .35rem; }
 .login-sub { font-size: .88rem; color: var(--text-muted); margin-bottom: 1.5rem; }
+.btn-google {
+  display: inline-flex; align-items: center; gap: .65rem;
+  padding: .75rem 1.5rem; border-radius: 8px;
+  border: 1.5px solid #dadce0; background: white; color: #3c4043;
+  font-size: .95rem; font-weight: 600; cursor: pointer;
+  transition: box-shadow .2s, border-color .2s;
+  width: 100%; justify-content: center;
+}
+.btn-google:hover { box-shadow: 0 2px 8px rgba(0,0,0,.15); border-color: #bbb; }
 .user-list { display: flex; flex-direction: column; gap: .65rem; }
 .user-card {
   display: flex;
