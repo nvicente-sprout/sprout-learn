@@ -233,6 +233,7 @@ function courseFromRow(row) {
     category: row.category, type: row.type, contentType: row.content_type,
     totalPages: row.total_pages || 0, pdfDataUrl: row.pdf_url || null,
     coverUrl: row.cover_url || null, youtubeId: row.youtube_id || null,
+    slidesUrl: row.slides_url || null,
   };
 }
 function courseToRow(c) {
@@ -241,6 +242,7 @@ function courseToRow(c) {
     category: c.category, type: c.type, content_type: c.contentType,
     total_pages: c.totalPages || 0, pdf_url: c.pdfDataUrl || null,
     cover_url: c.coverUrl || null, youtube_id: c.youtubeId || null,
+    slides_url: c.slidesUrl || null,
   };
 }
 
@@ -565,6 +567,7 @@ function renderAdminCourses(filterQ = '', filterCat = '') {
       </select>
       <div class="toolbar-spacer"></div>
       <button class="btn btn-outline btn-sm" onclick="showUploadModal()">📄 Upload PDF</button>
+      <button class="btn btn-outline btn-sm" onclick="showAddUrlCourseModal()">🔗 YouTube / Slides</button>
       <button class="btn btn-primary btn-sm" onclick="showCreateCourseModal()">+ New Course</button>
     </div>
     <div class="course-grid">
@@ -681,6 +684,159 @@ function createCourse() {
   closeModal();
   toast('Course created!');
   renderAdminCourses();
+}
+
+// ─── Add YouTube / Google Slides Course Modal ─────────────────────────────────
+function showAddUrlCourseModal() {
+  showModal(`
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="gmodal-header">
+        <h2>Add YouTube / Google Slides Course</h2>
+        <button class="gmodal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="gmodal-body">
+        <div class="form-group">
+          <label class="form-label">Content URL *</label>
+          <input id="url-input" class="form-input" placeholder="Paste YouTube or Google Slides URL" oninput="onUrlInput(this.value)" />
+          <div id="url-detect" style="font-size:.78rem;margin-top:.4rem;color:var(--text-muted)">Paste a YouTube video URL or a Google Slides share/edit link</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Course Title *</label>
+          <input id="url-title" class="form-input" placeholder="Enter course title" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <select id="url-cat" class="form-select">
+              ${CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Type</label>
+            <select id="url-type" class="form-select"><option>Free</option><option>Paid</option></select>
+          </div>
+        </div>
+        <p class="form-label" style="margin-bottom:.5rem">Assessment Questions</p>
+        <label class="upload-option selected" id="url-opt-ai">
+          <input type="radio" name="url-mode" value="ai" checked onchange="selectUrlMode('ai')" />
+          <div style="flex:1">
+            <div class="upload-option-title">🤖 AI Generate</div>
+            <div class="upload-option-desc">AI reads the content and auto-generates 8 questions</div>
+          </div>
+        </label>
+        <label class="upload-option" id="url-opt-manual">
+          <input type="radio" name="url-mode" value="manual" onchange="selectUrlMode('manual')" />
+          <div><div class="upload-option-title">✍️ Add Manually</div><div class="upload-option-desc">Build questions yourself after adding the course</div></div>
+        </label>
+        <label class="upload-option" id="url-opt-skip">
+          <input type="radio" name="url-mode" value="skip" onchange="selectUrlMode('skip')" />
+          <div><div class="upload-option-title">⏭ Skip for now</div><div class="upload-option-desc">Add questions later</div></div>
+        </label>
+      </div>
+      <div class="gmodal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitUrlCourse()">Add Course</button>
+      </div>
+    </div>`);
+}
+
+function selectUrlMode(mode) {
+  ['ai','manual','skip'].forEach(m => {
+    const el = document.getElementById(`url-opt-${m}`);
+    if (el) el.classList.toggle('selected', m === mode);
+  });
+}
+
+function onUrlInput(val) {
+  const detected = parseContentUrl(val.trim());
+  const el = document.getElementById('url-detect');
+  if (!el) return;
+  if (!val.trim()) {
+    el.textContent = 'Paste a YouTube video URL or a Google Slides share/edit link';
+    el.style.color = 'var(--text-muted)';
+    return;
+  }
+  if (detected?.type === 'youtube') {
+    el.innerHTML = '✅ <strong>YouTube video detected</strong> · ID: ' + esc(detected.id);
+    el.style.color = '#2e7d32';
+  } else if (detected?.type === 'slides') {
+    el.innerHTML = '✅ <strong>Google Slides detected</strong> · ID: ' + esc(detected.id);
+    el.style.color = '#2e7d32';
+  } else {
+    el.textContent = '⚠️ URL not recognized. Use a YouTube or Google Slides URL.';
+    el.style.color = '#e65100';
+  }
+}
+
+function parseContentUrl(url) {
+  const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|v\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  if (ytMatch) return { type: 'youtube', id: ytMatch[1] };
+  const slidesMatch = url.match(/docs\.google\.com\/presentation\/d\/([a-zA-Z0-9_-]+)/);
+  if (slidesMatch) return { type: 'slides', id: slidesMatch[1] };
+  return null;
+}
+
+async function submitUrlCourse() {
+  const urlVal = document.getElementById('url-input')?.value.trim() || '';
+  const detected = parseContentUrl(urlVal);
+  if (!detected) { toast('Please enter a valid YouTube or Google Slides URL', 'error'); return; }
+  const title = document.getElementById('url-title')?.value.trim();
+  if (!title) { toast('Please enter a course title', 'error'); return; }
+  const cat  = document.getElementById('url-cat')?.value || CATEGORIES[0];
+  const type = document.getElementById('url-type')?.value || 'Free';
+  const mode = document.querySelector('input[name="url-mode"]:checked')?.value || 'ai';
+  const courseId = nextCourseId();
+
+  closeModal();
+  showLoader('Adding course', 'Saving to database');
+
+  const newCourse = {
+    id: courseId, title, description: '', category: cat, type,
+    contentType: detected.type,
+    youtubeId: detected.type === 'youtube' ? detected.id : null,
+    slidesUrl: detected.type === 'slides' ? urlVal : null,
+    totalPages: 0,
+  };
+  courses.unshift(newCourse);
+  await sb.from('courses').upsert(courseToRow(newCourse))
+    .then(({ error }) => { if (error) console.error('Course save:', error); });
+
+  if (mode === 'ai') {
+    showLoader('Generating questions', detected.type === 'youtube' ? 'Fetching video transcript…' : 'Reading slide content…');
+    try {
+      const body = detected.type === 'youtube'
+        ? { type: 'youtube', videoId: detected.id }
+        : { type: 'slides', presentationId: detected.id };
+      const contentRes = await fetch('/api/fetch-content', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const contentData = await contentRes.json();
+      if (!contentData.text || contentData.text.length < 50) {
+        throw new Error(contentData.error || 'Not enough content to generate questions.');
+      }
+      const qs = await generateQuestionsAI(contentData.text, title);
+      questions[courseId] = qs;
+      await sb.from('questions').upsert({ course_id: courseId, questions_json: qs });
+      hideLoader();
+      toast(`✅ Course added! ${qs.length} questions generated for "${title}"`);
+    } catch(err) {
+      hideLoader();
+      console.error('AI URL generation error:', err);
+      toast(`Course added. AI failed: ${err.message}`, 'info');
+      requestAnimationFrame(() => requestAnimationFrame(() => showManualBuilderModal(courseId)));
+    }
+    renderAdminCourses();
+  } else if (mode === 'manual') {
+    hideLoader();
+    toast('Course added! Opening question builder…');
+    renderAdminCourses();
+    requestAnimationFrame(() => requestAnimationFrame(() => showManualBuilderModal(courseId)));
+  } else {
+    hideLoader();
+    toast('Course added!');
+    renderAdminCourses();
+  }
 }
 
 // ─── Upload PDF Modal ─────────────────────────────────────────────────────────
@@ -1070,6 +1226,10 @@ function showAddQuestionsModal(courseId) {
         <button class="btn btn-accent" style="width:100%;margin-bottom:.65rem;justify-content:center" onclick="aiGenerateForExisting('${courseId}')">
           🤖 AI Generate from PDF
         </button>` : ''}
+        ${['youtube','slides'].includes(getCourse(courseId)?.contentType) ? `
+        <button class="btn btn-accent" style="width:100%;margin-bottom:.65rem;justify-content:center" onclick="aiGenerateForUrl('${courseId}')">
+          🤖 AI Generate from ${getCourse(courseId)?.contentType === 'youtube' ? 'Video' : 'Slides'}
+        </button>` : ''}
         <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="closeModal();setTimeout(()=>showManualBuilderModal('${courseId}'),200)">
           ✍️ Manual Builder
         </button>
@@ -1104,6 +1264,40 @@ async function aiGenerateForExisting(courseId) {
     console.error('AI generation error:', err);
     hideLoader();
     toast(`AI failed: ${err.message || 'check console'}`, 'error');
+  }
+}
+
+async function aiGenerateForUrl(courseId) {
+  const course = getCourse(courseId);
+  if (!course) return;
+  closeModal();
+  const isYoutube = course.contentType === 'youtube';
+  showLoader('Generating questions', isYoutube ? 'Fetching video transcript…' : 'Reading slide content…');
+  try {
+    const presentationId = (course.slidesUrl || '').match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1];
+    const body = isYoutube
+      ? { type: 'youtube', videoId: course.youtubeId }
+      : { type: 'slides', presentationId };
+    if (!body.videoId && !body.presentationId) throw new Error('No video ID or presentation ID found on this course.');
+    const contentRes = await fetch('/api/fetch-content', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const contentData = await contentRes.json();
+    if (!contentData.text || contentData.text.length < 50) {
+      throw new Error(contentData.error || 'Not enough content extracted to generate questions.');
+    }
+    const qs = await generateQuestionsAI(contentData.text, course.title);
+    questions[courseId] = qs;
+    await sb.from('questions').upsert({ course_id: courseId, questions_json: qs });
+    hideLoader();
+    toast(`${qs.length} questions generated!`);
+    renderAdminCourses();
+  } catch(err) {
+    hideLoader();
+    console.error('AI URL generation error:', err);
+    toast(`AI failed: ${err.message}`, 'error');
+    showManualBuilderModal(courseId);
   }
 }
 
@@ -1597,6 +1791,10 @@ function viewerBodyHTML(course) {
   } else if (course.contentType === 'youtube') {
     setViewerProgress(currentUser.id, course.id, { completed: true });
     return `<div class="viewer-youtube"><iframe src="https://www.youtube.com/embed/${esc(course.youtubeId)}?autoplay=0&rel=0" allowfullscreen></iframe></div>`;
+  } else if (course.contentType === 'slides') {
+    setViewerProgress(currentUser.id, course.id, { completed: true });
+    const embedId = (course.slidesUrl || '').match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1] || '';
+    return `<div class="viewer-youtube"><iframe src="https://docs.google.com/presentation/d/${esc(embedId)}/embed?start=false&loop=false&delayms=3000" allowfullscreen></iframe></div>`;
   } else {
     return `<div class="viewer-no-content">
       <span class="big-icon">📚</span>
@@ -1885,7 +2083,7 @@ function typeBadge(type) {
   return `<span class="badge badge-${(type||'free').toLowerCase()}">${esc(type||'Free')}</span>`;
 }
 function contentBadge(type) {
-  const map = { pdf: ['badge-pdf','PDF Slides'], youtube: ['badge-video','Video'], none: ['badge-none','Coming Soon'] };
+  const map = { pdf: ['badge-pdf','PDF Slides'], youtube: ['badge-video','Video'], slides: ['badge-slides','Slides'], none: ['badge-none','Coming Soon'] };
   const [cls, label] = map[type] || map.none;
   return `<span class="badge ${cls}">${label}</span>`;
 }
