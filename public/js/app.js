@@ -915,10 +915,13 @@ async function autoDetectGeminiModel() {
   try {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
     const data = await res.json();
-    const models = (data.models || []).map(m => m.name.replace('models/', ''));
+    const models = (data.models || [])
+      .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
+      .map(m => m.name.replace('models/', ''));
+    console.log('Available Gemini models:', models);
     const preferred = ['gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash','gemini-2.5-pro','gemini-1.5-pro','gemini-pro'];
-    return preferred.find(p => models.includes(p)) || models.find(m => m.includes('gemini')) || null;
-  } catch { return null; }
+    return preferred.find(p => models.includes(p)) || models.find(m => m.includes('flash')) || models.find(m => m.includes('gemini')) || null;
+  } catch (e) { console.error('Gemini model detect:', e); return null; }
 }
 
 // ─── AI Question Generation ───────────────────────────────────────────────────
