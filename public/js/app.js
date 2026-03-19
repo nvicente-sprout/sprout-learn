@@ -3484,7 +3484,7 @@ function renderLearnerDashboard() {
     ${teamWidget}
     <p class="section-heading">🏃 Sprout Runner</p>
     <div class="flappy-card">
-      <canvas id="flappy-canvas" width="420" height="420" class="flappy-canvas"></canvas>
+      <canvas id="flappy-canvas" width="600" height="420" class="flappy-canvas"></canvas>
       <div class="flappy-side">
         <div class="flappy-lb-header">🏆 Top Scores</div>
         <div id="flappy-lb" class="flappy-lb"></div>
