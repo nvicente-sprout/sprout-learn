@@ -3144,6 +3144,9 @@ function startFlappyGame() {
   _flappyGame = new RunnerGame('flappy-canvas', myScore);
 }
 
+function setRunnerChar(c) { localStorage.setItem('sprout_char', c); }
+function getRunnerChar()  { return localStorage.getItem('sprout_char') || 'boy'; }
+
 class RunnerGame {
   constructor(canvasId, bestScore = 0) {
     this.canvas = document.getElementById(canvasId);
@@ -3157,13 +3160,10 @@ class RunnerGame {
     this._frame = 0;
     this._dist  = 0;
 
-    this.GROUND_Y = this.H - 58;
-    this.speed    = 3.8;
+    this.GROUND_Y = this.H - 68;
+    this.speed    = 1.9;   // 50% slower start
 
-    // Runner character
-    this.runner = { x: 65, y: this.GROUND_Y, vy: 0, jumping: false, jumps: 0, leg: 0 };
-
-    // Obstacles + coins
+    this.runner   = { x: 75, y: this.GROUND_Y, vy: 0, jumping: false, jumps: 0, leg: 0 };
     this.obs      = [];
     this.coins    = [];
     this.obsTimer = 0;
@@ -3171,16 +3171,10 @@ class RunnerGame {
     this.groundX  = 0;
     this.cloudX   = 0;
 
-    // Sprite
-    this.img = new Image();
-    this.img.src = 'assets/logos/logo-icon-green.svg';
-
-    // Input
     this._input = this._input.bind(this);
     this.canvas.addEventListener('click',      this._input);
     this.canvas.addEventListener('touchstart', this._input, { passive: true });
     document.addEventListener('keydown',       this._input);
-
     this._tick = this._tick.bind(this);
     this._raf  = requestAnimationFrame(this._tick);
   }
@@ -3191,77 +3185,64 @@ class RunnerGame {
     if (this.state === 'idle' || this.state === 'dead') {
       this._reset(); this.state = 'playing';
     } else if (this.state === 'playing' && this.runner.jumps < 2) {
-      this.runner.vy = -11; this.runner.jumping = true; this.runner.jumps++;
+      this.runner.vy = -12; this.runner.jumping = true; this.runner.jumps++;
     }
   }
 
   _reset() {
-    this.runner   = { x: 65, y: this.GROUND_Y, vy: 0, jumping: false, jumps: 0, leg: 0 };
+    this.runner   = { x: 75, y: this.GROUND_Y, vy: 0, jumping: false, jumps: 0, leg: 0 };
     this.obs      = []; this.coins = [];
     this.obsTimer = 0; this.coinTimer = 0;
     this.score    = 0; this._frame = 0; this._dist = 0;
-    this.speed    = 3.8;
+    this.speed    = 1.9;
   }
 
   _update() {
     if (this.state !== 'playing') return;
     this._frame++;
-    this._dist  += this.speed;
-    this.score   = Math.floor(this._dist / 8);
-    this.speed   = Math.min(9, 3.8 + Math.floor(this.score / 20) * 0.35);
+    this._dist += this.speed;
+    this.score  = Math.floor(this._dist / 8);
+    this.speed  = Math.min(4.5, 1.9 + Math.floor(this.score / 20) * 0.18); // max 4.5
 
     const r = this.runner;
+    r.vy += 0.52; r.y += r.vy;
+    if (r.y >= this.GROUND_Y) { r.y = this.GROUND_Y; r.vy = 0; r.jumping = false; r.jumps = 0; }
+    if (!r.jumping) r.leg = (r.leg + 0.22) % (Math.PI * 2);
 
-    // Physics
-    r.vy += 0.52;
-    r.y  += r.vy;
-    if (r.y >= this.GROUND_Y) {
-      r.y = this.GROUND_Y; r.vy = 0; r.jumping = false; r.jumps = 0;
-    }
-    if (!r.jumping) r.leg = (r.leg + 0.28) % (Math.PI * 2);
-
-    // Scroll
     this.groundX = (this.groundX - this.speed + 60) % 60;
-    this.cloudX  = (this.cloudX  - this.speed * 0.25 + 400) % 400;
+    this.cloudX  = (this.cloudX  - this.speed * 0.25 + 500) % 500;
 
-    // Spawn obstacles — vary gap based on speed
+    // Obstacles — longer gaps, scale slowly
     this.obsTimer++;
-    const gap = Math.max(52, 88 - Math.floor(this.score / 15) * 3);
+    const gap = Math.max(90, 140 - Math.floor(this.score / 15) * 4);
     if (this.obsTimer >= gap) {
       this.obsTimer = 0;
-      const h = 30 + Math.floor(Math.random() * 3) * 18; // 30, 48, or 66
+      const h = 36 + Math.floor(Math.random() * 3) * 22; // 36, 58, or 80
       this.obs.push({ x: this.W + 10, h });
     }
 
-    // Spawn coins above obstacles
     this.coinTimer++;
-    if (this.coinTimer >= 38) {
+    if (this.coinTimer >= 55) {
       this.coinTimer = 0;
-      this.coins.push({ x: this.W + 10, y: this.GROUND_Y - 55 - Math.random() * 45 });
+      this.coins.push({ x: this.W + 10, y: this.GROUND_Y - 70 - Math.random() * 50 });
     }
 
-    // Move + collide obstacles
     for (const o of this.obs) o.x -= this.speed;
-    this.obs = this.obs.filter(o => o.x > -30);
-    for (const o of this.obs) {
-      if (this._hitObs(o)) { this._die(); return; }
-    }
+    this.obs = this.obs.filter(o => o.x > -40);
+    for (const o of this.obs) { if (this._hitObs(o)) { this._die(); return; } }
 
-    // Move + collect coins
     for (const c of this.coins) c.x -= this.speed;
     for (const c of this.coins) {
-      if (!c.col && Math.abs(c.x - r.x) < 22 && Math.abs(c.y - (r.y - 30)) < 22) {
-        c.col = true; this.score += 3;
-      }
+      if (!c.col && Math.abs(c.x - r.x) < 24 && Math.abs(c.y - (r.y - 36)) < 24) { c.col = true; this.score += 3; }
     }
     this.coins = this.coins.filter(c => c.x > -20 && !c.col);
   }
 
   _hitObs(o) {
     const r = this.runner;
-    const rL = r.x - 12, rR = r.x + 12, rT = r.y - 34, rB = r.y - 2;
-    const oL = o.x - 14, oR = o.x + 14, oT = this.GROUND_Y - o.h, oB = this.GROUND_Y;
-    return rL < oR && rR > oL && rT < oB && rB > oT;
+    const rL = r.x - 13, rR = r.x + 13, rT = r.y - 42, rB = r.y - 4;
+    const oL = o.x - 16, oR = o.x + 16, oT = this.GROUND_Y - o.h;
+    return rL < oR && rR > oL && rT < this.GROUND_Y && rB > oT;
   }
 
   async _die() {
@@ -3275,8 +3256,6 @@ class RunnerGame {
 
   _draw() {
     const ctx = this.ctx, W = this.W, H = this.H;
-
-    // Sky
     const sky = ctx.createLinearGradient(0, 0, 0, this.GROUND_Y);
     sky.addColorStop(0, '#b2dfdb'); sky.addColorStop(1, '#e8f5e9');
     ctx.fillStyle = sky; ctx.fillRect(0, 0, W, this.GROUND_Y);
@@ -3284,96 +3263,136 @@ class RunnerGame {
     // Clouds
     ctx.fillStyle = 'rgba(255,255,255,.8)';
     const cx = this.cloudX;
-    this._cloud(cx % W, 38, 28);
-    this._cloud((cx + 160) % W, 22, 19);
-    this._cloud((cx + 270) % W, 50, 15);
+    this._cloud(cx % W, 45, 34); this._cloud((cx+200)%W, 26, 22); this._cloud((cx+340)%W, 60, 18);
 
-    // Obstacles
     for (const o of this.obs) this._drawObs(o);
 
-    // Coins
     for (const c of this.coins) {
       ctx.fillStyle = '#FFD700';
-      ctx.beginPath(); ctx.arc(c.x, c.y, 7, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,.55)';
-      ctx.beginPath(); ctx.arc(c.x - 2, c.y - 2, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(c.x, c.y, 8, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.5)';
+      ctx.beginPath(); ctx.arc(c.x-2, c.y-2, 3, 0, Math.PI*2); ctx.fill();
     }
 
-    // Ground
     ctx.fillStyle = '#2d5a2d'; ctx.fillRect(0, this.GROUND_Y, W, H - this.GROUND_Y);
-    ctx.fillStyle = '#3ED320';  ctx.fillRect(0, this.GROUND_Y, W, 7);
+    ctx.fillStyle = '#3ED320';  ctx.fillRect(0, this.GROUND_Y, W, 8);
     ctx.fillStyle = 'rgba(0,0,0,.12)';
-    for (let x = this.groundX; x < W; x += 60) ctx.fillRect(x, this.GROUND_Y + 12, 28, 4);
+    for (let x = this.groundX; x < W; x += 60) ctx.fillRect(x, this.GROUND_Y + 14, 30, 5);
 
-    // Runner
     this._drawRunner();
 
-    // Score
     if (this.state !== 'idle') {
       ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-      ctx.font = 'bold 20px system-ui'; ctx.fillStyle = 'white';
+      ctx.font = 'bold 22px system-ui'; ctx.fillStyle = 'white';
       ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 4;
-      ctx.fillText(this.score, W - 14, 28);
-      ctx.font = '11px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.7)';
-      ctx.fillText(`spd ${Math.floor(this.speed * 10) / 10}`, W - 14, 44);
+      ctx.fillText(this.score, W - 16, 32);
       ctx.shadowBlur = 0;
     }
 
-    // Overlays
     if (this.state === 'idle') {
       ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fillRect(0, 0, W, H);
-      this._txt('🌱 Sprout Runner', W/2, H/2 - 26, 'bold 19px system-ui', 'white');
-      this._txt('Tap / Space to start', W/2, H/2 + 8, '14px system-ui', 'rgba(255,255,255,.85)');
-      this._txt('Double-tap to double jump!', W/2, H/2 + 30, '12px system-ui', 'rgba(255,255,255,.6)');
-      this._txt(`Best: ${this.best}`, W/2, H/2 + 52, '13px system-ui', '#3ED320');
+      this._txt('🏃 Sprout Runner', W/2, H/2 - 30, 'bold 20px system-ui', 'white');
+      this._txt('Tap / Space to start', W/2, H/2 + 8, '15px system-ui', 'rgba(255,255,255,.85)');
+      this._txt('Tap twice = double jump!', W/2, H/2 + 32, '13px system-ui', 'rgba(255,255,255,.6)');
+      this._txt(`Best: ${this.best}`, W/2, H/2 + 56, '14px system-ui', '#3ED320');
     }
     if (this.state === 'dead') {
       ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, 0, W, H);
-      this._txt('💥 Ouch!', W/2, H/2 - 38, 'bold 20px system-ui', 'white');
-      this._txt(`Score: ${this.score}`, W/2, H/2 - 8, '16px system-ui', 'white');
-      this._txt(`Best: ${this.best}`, W/2, H/2 + 18, '14px system-ui', '#3ED320');
-      this._txt('Tap or Space to retry', W/2, H/2 + 46, '13px system-ui', 'rgba(255,255,255,.8)');
+      this._txt('💥 Ouch!', W/2, H/2 - 42, 'bold 22px system-ui', 'white');
+      this._txt(`Score: ${this.score}`, W/2, H/2 - 10, '17px system-ui', 'white');
+      this._txt(`Best: ${this.best}`, W/2, H/2 + 18, '15px system-ui', '#3ED320');
+      this._txt('Tap or Space to retry', W/2, H/2 + 50, '13px system-ui', 'rgba(255,255,255,.8)');
     }
   }
 
   _drawObs(o) {
-    const ctx = this.ctx, x = o.x, y = this.GROUND_Y - o.h, w = 28;
-    // Stack of HR documents
+    const ctx = this.ctx, x = o.x, y = this.GROUND_Y - o.h, w = 32;
     ctx.fillStyle = '#1B3A1B'; ctx.fillRect(x - w/2, y, w, o.h);
-    ctx.fillStyle = '#2d5a2d'; ctx.fillRect(x - w/2, y, w, 7); // top cap
-    ctx.fillStyle = 'rgba(255,255,255,.13)';
-    for (let i = 13; i < o.h - 4; i += 9) ctx.fillRect(x - w/2 + 4, y + i, w - 8, 4);
+    ctx.fillStyle = '#2d5a2d'; ctx.fillRect(x - w/2, y, w, 8);
+    ctx.fillStyle = 'rgba(255,255,255,.12)';
+    for (let i = 14; i < o.h - 4; i += 10) ctx.fillRect(x - w/2 + 5, y + i, w - 10, 5);
   }
 
   _drawRunner() {
-    const ctx = this.ctx, r = this.runner, sz = 32;
+    const ctx = this.ctx, r = this.runner;
     const x = r.x, y = r.y;
-    // Legs
-    const swing = r.jumping ? 0 : Math.sin(r.leg) * 9;
-    ctx.fillStyle = '#1B3A1B';
-    ctx.fillRect(x - 8 + swing, y - 14, 7, 15);
-    ctx.fillRect(x + 1 - swing, y - 14, 7, 15);
-    // Body / sprite
-    if (this.img.complete && this.img.naturalWidth > 0) {
-      ctx.drawImage(this.img, x - sz/2, y - sz - 6, sz, sz);
+    const swing = r.jumping ? 0 : Math.sin(r.leg) * 10;
+    const char  = getRunnerChar();
+    const skin  = '#FDBCB4';
+
+    if (char === 'girl') {
+      // Legs (bare skin)
+      ctx.fillStyle = skin;
+      ctx.fillRect(x - 9 + swing, y - 16, 8, 17);
+      ctx.fillRect(x + 1 - swing, y - 16, 8, 17);
+      // Skirt
+      ctx.fillStyle = '#e91e63';
+      ctx.beginPath(); ctx.moveTo(x - 14, y - 22); ctx.lineTo(x + 14, y - 22);
+      ctx.lineTo(x + 16, y - 10); ctx.lineTo(x - 16, y - 10); ctx.closePath(); ctx.fill();
+      // Top
+      ctx.fillStyle = '#c2185b';
+      ctx.fillRect(x - 10, y - 40, 20, 19);
+      // Arms
+      ctx.fillStyle = skin;
+      ctx.fillRect(x - 16, y - 38, 6, 12);
+      ctx.fillRect(x + 10, y - 38, 6, 12);
+      // Head
+      ctx.fillStyle = skin;
+      ctx.beginPath(); ctx.arc(x, y - 52, 13, 0, Math.PI*2); ctx.fill();
+      // Hair (long with side strands)
+      ctx.fillStyle = '#8b5e3c';
+      ctx.beginPath(); ctx.arc(x, y - 62, 13, Math.PI, 0); ctx.fill();
+      ctx.fillRect(x - 13, y - 62, 5, 20);
+      ctx.fillRect(x + 8,  y - 62, 5, 20);
+      ctx.fillRect(x - 13, y - 62, 26, 8);
+      // Eyes
+      ctx.fillStyle = '#333';
+      ctx.beginPath(); ctx.arc(x - 4, y - 52, 2, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x + 4, y - 52, 2, 0, Math.PI*2); ctx.fill();
     } else {
-      ctx.fillStyle = '#1B3A1B'; ctx.beginPath(); ctx.arc(x, y - sz/2, sz/2, 0, Math.PI*2); ctx.fill();
+      // Boy
+      // Legs / pants
+      ctx.fillStyle = '#37474f';
+      ctx.fillRect(x - 9 + swing, y - 16, 8, 17);
+      ctx.fillRect(x + 1 - swing, y - 16, 8, 17);
+      // Shoes
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(x - 10 + swing, y - 4, 10, 5);
+      ctx.fillRect(x, y - 4 - swing*0.3, 10, 5);
+      // Shirt
+      ctx.fillStyle = '#1565c0';
+      ctx.fillRect(x - 11, y - 40, 22, 25);
+      // Arms
+      ctx.fillStyle = '#1565c0';
+      ctx.fillRect(x - 17, y - 39, 6, 13);
+      ctx.fillRect(x + 11, y - 39, 6, 13);
+      ctx.fillStyle = skin;
+      ctx.fillRect(x - 17, y - 27, 6, 6);
+      ctx.fillRect(x + 11, y - 27, 6, 6);
+      // Head
+      ctx.fillStyle = skin;
+      ctx.beginPath(); ctx.arc(x, y - 52, 13, 0, Math.PI*2); ctx.fill();
+      // Hair
+      ctx.fillStyle = '#4a3728';
+      ctx.beginPath(); ctx.arc(x, y - 62, 13, Math.PI, 0); ctx.fill();
+      ctx.fillRect(x - 13, y - 63, 26, 8);
+      // Eyes
+      ctx.fillStyle = '#333';
+      ctx.beginPath(); ctx.arc(x - 4, y - 52, 2, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x + 4, y - 52, 2, 0, Math.PI*2); ctx.fill();
     }
   }
 
   _cloud(x, y, r) {
     const ctx = this.ctx;
     ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI*2);
-    ctx.arc(x + r*.8, y - r*.3, r*.7, 0, Math.PI*2);
-    ctx.arc(x + r*1.5, y, r*.8, 0, Math.PI*2);
+    ctx.arc(x, y, r, 0, Math.PI*2); ctx.arc(x+r*.8, y-r*.3, r*.7, 0, Math.PI*2); ctx.arc(x+r*1.5, y, r*.8, 0, Math.PI*2);
     ctx.fill();
   }
 
   _txt(text, x, y, font, color) {
     const ctx = this.ctx;
-    ctx.font = font; ctx.fillStyle = color;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = font; ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(text, x, y);
   }
 
@@ -3462,13 +3481,18 @@ function renderLearnerDashboard() {
       ${statCard('Avg Progress', avg, '%', '#3a7a3a', 2)}
     </div>
     ${teamWidget}
-    <p class="section-heading">🌱 Sprout Runner</p>
+    <p class="section-heading">🏃 Sprout Runner</p>
     <div class="flappy-card">
-      <canvas id="flappy-canvas" width="300" height="300" class="flappy-canvas"></canvas>
+      <canvas id="flappy-canvas" width="420" height="420" class="flappy-canvas"></canvas>
       <div class="flappy-side">
         <div class="flappy-lb-header">🏆 Top Scores</div>
         <div id="flappy-lb" class="flappy-lb"></div>
-        <div class="flappy-hint">Tap / <kbd>Space</kbd> to jump &nbsp;·&nbsp; Double-tap = double jump</div>
+        <div class="flappy-char-picker">
+          <span style="font-size:.75rem;color:var(--text-muted);font-weight:600">Play as:</span>
+          <button class="char-btn ${getRunnerChar()==='boy'?'char-btn--active':''}" onclick="setRunnerChar('boy');destroyFlappy();requestAnimationFrame(()=>startFlappyGame())">👦 Boy</button>
+          <button class="char-btn ${getRunnerChar()==='girl'?'char-btn--active':''}" onclick="setRunnerChar('girl');destroyFlappy();requestAnimationFrame(()=>startFlappyGame())">👧 Girl</button>
+        </div>
+        <div class="flappy-hint">Tap / <kbd>Space</kbd> to jump &nbsp;·&nbsp; Tap twice = double jump</div>
       </div>
     </div>
     <p class="section-heading">Continue Learning</p>

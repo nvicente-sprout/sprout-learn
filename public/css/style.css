@@ -1383,25 +1383,23 @@ img { max-width: 100%; }
   overflow: hidden;
   margin-bottom: 1.5rem;
   animation: fadeUp .35s ease both;
-  width: fit-content;
-  max-width: 100%;
+  width: 100%;
 }
 .flappy-canvas {
   display: block;
   cursor: pointer;
   flex-shrink: 0;
-  width: 300px;
-  height: 300px;
+  width: 420px;
+  height: 420px;
   border-radius: 0;
 }
 .flappy-side {
-  width: 300px;
-  height: 300px;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 200px;
   display: flex;
   flex-direction: column;
-  padding: 1rem 1.1rem 1rem;
-  gap: .55rem;
+  padding: 1.1rem 1.25rem 1rem;
+  gap: .6rem;
   border-left: 1px solid var(--border);
   background: var(--card-bg);
   overflow: hidden;
@@ -1433,13 +1431,33 @@ img { max-width: 100%; }
 .flappy-lb-rank { width: 1.3rem; text-align: center; font-size: .88rem; flex-shrink: 0; }
 .flappy-lb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .flappy-lb-score { font-weight: 800; color: var(--primary); font-size: .88rem; flex-shrink: 0; }
+.flappy-char-picker {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-shrink: 0;
+  padding: .5rem 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.char-btn {
+  padding: .3rem .7rem;
+  border-radius: 20px;
+  border: 1.5px solid var(--border);
+  background: var(--bg);
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.char-btn:hover { border-color: var(--accent-dark); color: var(--primary); }
+.char-btn--active { background: var(--primary); color: white; border-color: var(--primary); }
 .flappy-hint {
   font-size: .72rem;
   color: var(--text-muted);
   flex-shrink: 0;
   margin-top: auto;
-  padding-top: .4rem;
-  border-top: 1px solid var(--border);
   line-height: 1.5;
 }
 .flappy-hint kbd {
@@ -1450,10 +1468,10 @@ img { max-width: 100%; }
   font-size: .7rem;
   font-family: inherit;
 }
-@media (max-width: 680px) {
-  .flappy-card { flex-direction: column; width: 100%; }
+@media (max-width: 700px) {
+  .flappy-card { flex-direction: column; }
   .flappy-canvas { width: 100%; height: auto; aspect-ratio: 1; }
-  .flappy-side { width: 100%; height: auto; border-left: none; border-top: 1px solid var(--border); }
+  .flappy-side { border-left: none; border-top: 1px solid var(--border); }
 }
 
 /* ─── Learner Dashboard — Team Widget ────────────────────────────────────── */
@@ -1462,65 +1480,62 @@ img { max-width: 100%; }
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
-  padding: 1.25rem 1.25rem 1rem;
-  margin-bottom: 1.5rem;
+  padding: .85rem 1rem .75rem;
+  margin-bottom: 1.25rem;
   animation: fadeUp .35s ease both;
 }
 .ld-team-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: .75rem;
   flex-wrap: wrap;
-  margin-bottom: 1.1rem;
+  margin-bottom: .75rem;
 }
 .ld-team-name {
-  font-size: 1.05rem;
+  font-size: .92rem;
   font-weight: 800;
   color: var(--text);
 }
 .ld-team-sub {
-  font-size: .8rem;
+  font-size: .74rem;
   color: var(--text-muted);
-  margin-top: .2rem;
+  margin-top: .1rem;
 }
 .ld-team-stats {
   display: flex;
-  gap: .6rem;
+  gap: .4rem;
 }
 .ld-team-stat {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: .5rem .75rem;
+  padding: .3rem .55rem;
   text-align: center;
-  min-width: 64px;
-  font-size: .72rem;
+  min-width: 52px;
+  font-size: .68rem;
   color: var(--text-muted);
   font-weight: 500;
 }
 .ld-team-stat span {
   display: block;
-  font-size: 1.1rem;
+  font-size: .9rem;
   font-weight: 800;
   color: var(--text);
   line-height: 1.2;
 }
-.ld-team-standings { display: flex; flex-direction: column; gap: .45rem; }
+.ld-team-standings { display: flex; flex-direction: column; gap: .3rem; }
 .ld-team-row {
   display: flex;
   align-items: center;
-  gap: .6rem;
-  font-size: .84rem;
-  padding: .35rem 0;
+  gap: .5rem;
+  font-size: .8rem;
+  padding: .2rem 0;
 }
-.ld-team-row--me {
-  font-weight: 700;
-  color: var(--primary);
-}
-.ld-team-row-rank { width: 1.6rem; text-align: center; font-size: .9rem; flex-shrink: 0; }
+.ld-team-row--me { font-weight: 700; color: var(--primary); }
+.ld-team-row-rank { width: 1.4rem; text-align: center; font-size: .85rem; flex-shrink: 0; }
 .ld-team-row-name {
-  width: 130px;
+  width: 110px;
   flex-shrink: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -1531,7 +1546,7 @@ img { max-width: 100%; }
 }
 .ld-team-bar-wrap {
   flex: 1;
-  height: 7px;
+  height: 5px;
   background: var(--bg-alt);
   border-radius: 99px;
   overflow: hidden;
@@ -1541,7 +1556,7 @@ img { max-width: 100%; }
   border-radius: 99px;
   transition: width .8s ease;
 }
-.ld-team-row-rate { width: 36px; text-align: right; flex-shrink: 0; font-size: .78rem; color: var(--text-muted); }
+.ld-team-row-rate { width: 32px; text-align: right; flex-shrink: 0; font-size: .74rem; color: var(--text-muted); }
 .ld-you-badge {
   font-size: .68rem;
   background: var(--accent);
