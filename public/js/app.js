@@ -266,8 +266,8 @@ async function loadData() {
     ]);
 
     if (cRes.error) console.error('courses load error:', cRes.error.message);
-    if (qRes.error) console.error('questions load error:', qRes.error.message);
-    if (aRes.error) console.error('assignments load error:', aRes.error.message);
+    if (qRes.error) { console.error('questions load error:', qRes.error.message); toast('⚠️ Questions failed to load: ' + qRes.error.message, 'error'); }
+    if (aRes.error) { console.error('assignments load error:', aRes.error.message); toast('⚠️ Assignments failed to load: ' + aRes.error.message, 'error'); }
     if (pRes.error) console.error('progress load error:', pRes.error.message);
     if (uRes.error) console.error('users load error:', uRes.error.message);
     if (tRes.error) console.error('teams load error:', tRes.error.message);
@@ -1527,11 +1527,11 @@ function toggleAssignee(userId, courseId) {
   if (idx > -1) {
     assignments[userId].splice(idx, 1);
     sb.from('assignments').delete().eq('user_id', userId).eq('course_id', courseId)
-      .then(({ error }) => { if (error) console.error('Assignment delete:', error); });
+      .then(({ error }) => { if (error) { console.error('Assignment delete:', error); toast('Failed to unassign: ' + error.message, 'error'); } });
   } else {
     assignments[userId].push(courseId);
     sb.from('assignments').upsert({ user_id: userId, course_id: courseId })
-      .then(({ error }) => { if (error) console.error('Assignment insert:', error); });
+      .then(({ error }) => { if (error) { console.error('Assignment insert:', error); toast('Failed to assign: ' + error.message, 'error'); } });
   }
   const item = document.getElementById(`assignee-${userId}`);
   const check = item?.querySelector('input[type="checkbox"]');
@@ -1546,11 +1546,11 @@ function toggleAssignAll(courseId) {
     if (allAssigned) {
       assignments[u.id] = assignments[u.id].filter(cid => cid !== courseId);
       sb.from('assignments').delete().eq('user_id', u.id).eq('course_id', courseId)
-        .then(({ error }) => { if (error) console.error('Assignment delete:', error); });
+        .then(({ error }) => { if (error) { console.error('Assignment delete:', error); toast('Failed to unassign: ' + error.message, 'error'); } });
     } else if (!isAssigned(u.id, courseId)) {
       assignments[u.id].push(courseId);
       sb.from('assignments').upsert({ user_id: u.id, course_id: courseId })
-        .then(({ error }) => { if (error) console.error('Assignment insert:', error); });
+        .then(({ error }) => { if (error) { console.error('Assignment insert:', error); toast('Failed to assign: ' + error.message, 'error'); } });
     }
   });
   showAssignModal(courseId);
