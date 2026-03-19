@@ -613,6 +613,8 @@ function handleRoute() {
   else if (hash === '/admin/courses')  renderAdminCourses();
   else if (hash === '/admin/team')      renderAdminTeam();
   else if (hash === '/admin/reports')   renderAdminReports();
+  else if (hash.startsWith('/admin/reports/user/'))   renderReportsUser(hash.replace('/admin/reports/user/',''));
+  else if (hash.startsWith('/admin/reports/course/')) renderReportsCourse(hash.replace('/admin/reports/course/',''));
   else if (hash === '/admin/leaderboard') renderLeaderboard(true);
   else if (hash === '/admin/settings')  renderAdminSettings();
   else if (hash === '/learner/dashboard')  renderLearnerDashboard();
@@ -2647,21 +2649,7 @@ function renderAdminReports() {
           const avg  = userAvgProgress(u.id);
           const teamName = allTeams.find(t=>t.id===u.teamId)?.name || '—';
           const maxDone  = userCompletions(topPerformers[0].id) || 1;
-          const assignedCids = getUserAssignments(u.id);
-          const courseHover = assignedCids.length ? `
-            <div class="rpt-hover-card">
-              <div class="rpt-hover-title">📚 Assigned Courses</div>
-              ${assignedCids.map(cid => {
-                const c = getCourse(cid);
-                const p = getProgress(u.id, cid);
-                return `<div class="rpt-hover-row">
-                  <span>${p.completed ? '✅' : '🕐'}</span>
-                  <span class="rpt-hover-name">${esc(c?.title || cid)}</span>
-                  ${p.score !== null ? `<span class="rpt-hover-score">${p.score}%</span>` : ''}
-                </div>`;
-              }).join('')}
-            </div>` : '';
-          return `<div class="reports-top-item rpt-hover-wrap" style="animation-delay:${i*.06}s">
+          return `<div class="reports-top-item reports-top-item--clickable" style="animation-delay:${i*.06}s" onclick="navigate('/admin/reports/user/${u.id}')">
             <div class="reports-top-rank">${medals[i]||`#${i+1}`}</div>
             ${avatarHTML(u, 38)}
             <div style="flex:1;min-width:0">
@@ -2675,7 +2663,7 @@ function renderAdminReports() {
               <div style="font-weight:700;color:var(--primary)">${done} done</div>
               <div style="color:var(--text-muted)">${avg}% progress</div>
             </div>
-            ${courseHover}
+            <span style="color:var(--text-muted);font-size:.8rem;margin-left:.5rem">›</span>
           </div>`;
         }).join('') : '<p style="color:var(--text-muted);font-size:.9rem">No activity yet.</p>'}
       </div>
@@ -2695,21 +2683,8 @@ function renderAdminReports() {
           <tbody>
             ${courseRows.length ? courseRows.map(r => {
               const barColor = r.passRate >= 70 ? '#2e7d32' : r.passRate >= 40 ? '#f57c00' : r.passRate > 0 ? '#c62828' : '#ccc';
-              const assignedUsers = learners().filter(u => isAssigned(u.id, r.c.id));
-              const peopleHover = assignedUsers.length ? `
-                <div class="rpt-hover-card rpt-hover-card--right">
-                  <div class="rpt-hover-title">👥 Assigned People</div>
-                  ${assignedUsers.map(u => {
-                    const p = getProgress(u.id, r.c.id);
-                    return `<div class="rpt-hover-row">
-                      <span>${p.completed ? '✅' : '🕐'}</span>
-                      <span class="rpt-hover-name">${esc(u.name)}</span>
-                      ${p.score !== null ? `<span class="rpt-hover-score">${p.score}%</span>` : ''}
-                    </div>`;
-                  }).join('')}
-                </div>` : '';
-              return `<tr class="rpt-hover-wrap">
-                <td style="position:relative">
+              return `<tr class="reports-table-row--clickable" onclick="navigate('/admin/reports/course/${r.c.id}')">
+                <td>
                   <div style="display:flex;align-items:center;gap:.6rem">
                     ${r.c.coverUrl ? `<img src="${r.c.coverUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0" />` : `<div style="width:36px;height:36px;border-radius:6px;background:#e8f5e9;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">${CAT_EMOJI[r.c.category]||'📚'}</div>`}
                     <div>
@@ -2717,7 +2692,6 @@ function renderAdminReports() {
                       <div style="font-size:.75rem;color:var(--text-muted)">${esc(r.c.category)}</div>
                     </div>
                   </div>
-                  ${peopleHover}
                 </td>
                 <td style="text-align:center;font-weight:600">${r.assigned}</td>
                 <td style="text-align:center;font-weight:600">${r.completed}</td>
@@ -2760,6 +2734,151 @@ function exportReportsCsv() {
   a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
   a.download = `sprout-learn-report-${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
+}
+
+// ─── Reports Detail Pages ─────────────────────────────────────────────────────
+function renderReportsUser(userId) {
+  const u = getUser(userId);
+  if (!u) { navigate('/admin/reports'); return; }
+  setTitle(u.name + ' — Report');
+  const teamName = allTeams.find(t => t.id === u.teamId)?.name || '—';
+  const assignedCids = getUserAssignments(userId);
+
+  const rows = assignedCids.map(cid => {
+    const c = getCourse(cid);
+    const p = getProgress(userId, cid);
+    return { c, p };
+  });
+
+  const completed = rows.filter(r => r.p.completed).length;
+  const scores = rows.filter(r => r.p.score !== null && r.p.score !== undefined).map(r => r.p.score);
+  const avgScore = scores.length ? Math.round(scores.reduce((a,b) => a+b,0) / scores.length) : null;
+
+  setMain(`
+    <div class="page-header fade-up">
+      <button class="btn btn-outline btn-sm" onclick="navigate('/admin/reports')">← Back to Reports</button>
+    </div>
+    <div class="rpt-detail-hero fade-up">
+      ${avatarHTML(u, 56)}
+      <div>
+        <div class="rpt-detail-name">${esc(u.name)}</div>
+        <div class="rpt-detail-meta">${esc(teamName)} · ${esc(u.email)}</div>
+      </div>
+      <div class="rpt-detail-stats">
+        <div class="rpt-detail-stat"><span>${assignedCids.length}</span>Assigned</div>
+        <div class="rpt-detail-stat"><span>${completed}</span>Completed</div>
+        <div class="rpt-detail-stat"><span>${avgScore !== null ? avgScore + '%' : '—'}</span>Avg Score</div>
+        <div class="rpt-detail-stat"><span>${userXP(userId)}</span>XP</div>
+      </div>
+    </div>
+    <div class="reports-table-wrap" style="margin-top:1.5rem">
+      <table class="reports-table">
+        <thead><tr>
+          <th>Course</th>
+          <th>Status</th>
+          <th>Score</th>
+          <th>Progress</th>
+        </tr></thead>
+        <tbody>
+          ${rows.length ? rows.map(({ c, p }) => {
+            if (!c) return '';
+            const statusColor = p.completed ? '#2e7d32' : '#f57c00';
+            const statusLabel = p.completed ? '✅ Completed' : p.currentSlide > 0 ? '🕐 In Progress' : '○ Not Started';
+            const pct = p.completed ? 100 : (c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0);
+            return `<tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:.6rem">
+                  ${c.coverUrl ? `<img src="${c.coverUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0"/>` : `<div style="width:36px;height:36px;border-radius:6px;background:#e8f5e9;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">${CAT_EMOJI[c.category]||'📚'}</div>`}
+                  <div>
+                    <div style="font-weight:600;font-size:.85rem">${esc(c.title)}</div>
+                    <div style="font-size:.75rem;color:var(--text-muted)">${esc(c.category)}</div>
+                  </div>
+                </div>
+              </td>
+              <td><span style="font-size:.83rem;font-weight:600;color:${statusColor}">${statusLabel}</span></td>
+              <td style="text-align:center;font-weight:700;color:var(--primary)">${p.score !== null && p.score !== undefined ? p.score + '%' : '—'}</td>
+              <td style="min-width:120px">
+                <div style="display:flex;align-items:center;gap:.5rem">
+                  <div style="flex:1;background:#e8f5e9;border-radius:99px;height:7px;overflow:hidden">
+                    <div style="width:${pct}%;height:100%;background:${p.completed ? '#2e7d32' : '#4a9e4a'};border-radius:99px"></div>
+                  </div>
+                  <span style="font-size:.78rem;font-weight:600;color:var(--text-muted)">${pct}%</span>
+                </div>
+              </td>
+            </tr>`;
+          }).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:2rem">No courses assigned yet.</td></tr>'}
+        </tbody>
+      </table>
+    </div>`);
+}
+
+function renderReportsCourse(courseId) {
+  const c = getCourse(courseId);
+  if (!c) { navigate('/admin/reports'); return; }
+  setTitle(c.title + ' — Report');
+  const assignedUsers = learners().filter(u => isAssigned(u.id, courseId));
+  const completedUsers = assignedUsers.filter(u => getProgress(u.id, courseId).completed);
+  const scores = assignedUsers.map(u => getProgress(u.id, courseId)).filter(p => p.score !== null && p.score !== undefined).map(p => p.score);
+  const avgScore = scores.length ? Math.round(scores.reduce((a,b) => a+b,0) / scores.length) : null;
+  const passRate = assignedUsers.length ? Math.round((completedUsers.length / assignedUsers.length) * 100) : 0;
+  const barColor = passRate >= 70 ? '#2e7d32' : passRate >= 40 ? '#f57c00' : '#c62828';
+
+  setMain(`
+    <div class="page-header fade-up">
+      <button class="btn btn-outline btn-sm" onclick="navigate('/admin/reports')">← Back to Reports</button>
+    </div>
+    <div class="rpt-detail-hero fade-up">
+      ${c.coverUrl ? `<img src="${c.coverUrl}" style="width:56px;height:56px;object-fit:cover;border-radius:10px;flex-shrink:0"/>` : `<div style="width:56px;height:56px;border-radius:10px;background:#e8f5e9;display:flex;align-items:center;justify-content:center;font-size:1.8rem;flex-shrink:0">${CAT_EMOJI[c.category]||'📚'}</div>`}
+      <div>
+        <div class="rpt-detail-name">${esc(c.title)}</div>
+        <div class="rpt-detail-meta">${esc(c.category)} · ${contentBadge(c.contentType)}</div>
+      </div>
+      <div class="rpt-detail-stats">
+        <div class="rpt-detail-stat"><span>${assignedUsers.length}</span>Assigned</div>
+        <div class="rpt-detail-stat"><span>${completedUsers.length}</span>Completed</div>
+        <div class="rpt-detail-stat"><span style="color:${barColor}">${passRate}%</span>Pass Rate</div>
+        <div class="rpt-detail-stat"><span>${avgScore !== null ? avgScore + '%' : '—'}</span>Avg Score</div>
+      </div>
+    </div>
+    <div class="reports-table-wrap" style="margin-top:1.5rem">
+      <table class="reports-table">
+        <thead><tr>
+          <th>Person</th>
+          <th>Team</th>
+          <th>Status</th>
+          <th>Score</th>
+          <th>Progress</th>
+        </tr></thead>
+        <tbody>
+          ${assignedUsers.length ? assignedUsers.map(u => {
+            const p = getProgress(u.id, courseId);
+            const teamName = allTeams.find(t => t.id === u.teamId)?.name || '—';
+            const statusColor = p.completed ? '#2e7d32' : '#f57c00';
+            const statusLabel = p.completed ? '✅ Completed' : p.currentSlide > 0 ? '🕐 In Progress' : '○ Not Started';
+            const pct = p.completed ? 100 : (c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0);
+            return `<tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:.6rem">
+                  ${avatarHTML(u, 32)}
+                  <div style="font-weight:600;font-size:.85rem">${esc(u.name)}</div>
+                </div>
+              </td>
+              <td style="font-size:.83rem;color:var(--text-muted)">${esc(teamName)}</td>
+              <td><span style="font-size:.83rem;font-weight:600;color:${statusColor}">${statusLabel}</span></td>
+              <td style="text-align:center;font-weight:700;color:var(--primary)">${p.score !== null && p.score !== undefined ? p.score + '%' : '—'}</td>
+              <td style="min-width:120px">
+                <div style="display:flex;align-items:center;gap:.5rem">
+                  <div style="flex:1;background:#e8f5e9;border-radius:99px;height:7px;overflow:hidden">
+                    <div style="width:${pct}%;height:100%;background:${p.completed ? '#2e7d32' : '#4a9e4a'};border-radius:99px"></div>
+                  </div>
+                  <span style="font-size:.78rem;font-weight:600;color:var(--text-muted)">${pct}%</span>
+                </div>
+              </td>
+            </tr>`;
+          }).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:2rem">No one assigned yet.</td></tr>'}
+        </tbody>
+      </table>
+    </div>`);
 }
 
 // ─── Learner Dashboard ────────────────────────────────────────────────────────

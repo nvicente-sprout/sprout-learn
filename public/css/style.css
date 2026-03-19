@@ -1158,51 +1158,44 @@ img { max-width: 100%; }
   flex-shrink: 0;
 }
 
-/* ─── Reports Hover Cards ─────────────────────────────────────────────────── */
-.rpt-hover-wrap { position: relative; }
-.reports-top-list, .reports-table-wrap { overflow: visible; }
-.rpt-hover-card {
-  display: none;
-  position: absolute;
-  left: calc(100% + 10px); top: 50%;
-  transform: translateY(-50%);
-  min-width: 240px;
-  max-width: 300px;
-  max-height: 300px;
-  overflow-y: auto;
+/* ─── Reports Clickable Rows ──────────────────────────────────────────────── */
+.reports-top-item--clickable { cursor: pointer; }
+.reports-top-item--clickable:hover { background: #e8f5e8; }
+.reports-table-row--clickable { cursor: pointer; }
+.reports-table-row--clickable:hover td { background: #f0faf0; }
+
+/* ─── Reports Detail Page ─────────────────────────────────────────────────── */
+.rpt-detail-hero {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  z-index: 500;
-  padding: .6rem .75rem .5rem;
+  padding: 1.25rem 1.5rem;
+  box-shadow: var(--shadow);
+  flex-wrap: wrap;
 }
-.rpt-hover-card--right {
-  left: auto; right: calc(100% + 10px);
-  top: 50%; transform: translateY(-50%);
-}
-.rpt-hover-wrap:hover .rpt-hover-card { display: block; }
-.rpt-hover-title {
-  font-size: .75rem;
-  font-weight: 700;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: .04em;
-  margin-bottom: .45rem;
-  padding-bottom: .35rem;
-  border-bottom: 1px solid var(--border);
-}
-.rpt-hover-row {
+.rpt-detail-name { font-size: 1.15rem; font-weight: 800; color: var(--primary); }
+.rpt-detail-meta { font-size: .82rem; color: var(--text-muted); margin-top: .2rem; }
+.rpt-detail-stats {
   display: flex;
-  align-items: center;
-  gap: .45rem;
-  padding: .3rem 0;
-  font-size: .8rem;
-  border-bottom: 1px solid #f0f0f0;
+  gap: 1.5rem;
+  margin-left: auto;
+  flex-wrap: wrap;
 }
-.rpt-hover-row:last-child { border-bottom: none; }
-.rpt-hover-name { flex: 1; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rpt-hover-score { font-weight: 700; color: var(--primary); flex-shrink: 0; font-size: .75rem; }
+.rpt-detail-stat {
+  text-align: center;
+  font-size: .78rem;
+  color: var(--text-muted);
+}
+.rpt-detail-stat span {
+  display: block;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--primary);
+  line-height: 1.2;
+}
 
 /* ─── Assignee Saving Spinner ─────────────────────────────────────────────── */
 .assignee-saving {
