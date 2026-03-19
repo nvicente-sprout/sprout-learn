@@ -188,7 +188,12 @@ function setProgress(userId, courseId, update) {
     user_id: userId, course_id: courseId,
     current_slide: p.currentSlide, completed: p.completed,
     score: p.score ?? null, passed: p.passed,
-  }).then(({ error }) => { if (error) console.error('Progress save:', error); });
+  }).then(({ error }) => {
+    if (error) {
+      console.error('Progress save:', error);
+      toast('⚠️ Progress failed to save: ' + error.message, 'error');
+    }
+  });
 }
 function getUserAssignments(userId) { return assignments[userId] || []; }
 function isAssigned(userId, courseId) { return getUserAssignments(userId).includes(courseId); }
@@ -498,6 +503,27 @@ function subscribeRealtime() {
       const hash = window.location.hash.slice(1);
       if (currentUser?.id === r.user_id && hash === '/learner/dashboard') renderLearnerDashboard();
       if (hash === '/admin/team') renderAdminTeam();
+    })
+    .subscribe();
+
+  // Realtime progress — keeps leaderboard/reports live without refresh
+  sb.channel('progress-live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'progress' }, ({ new: r, eventType }) => {
+      if (!r?.user_id) return;
+      const key = `${r.user_id}_${r.course_id}`;
+      if (eventType === 'DELETE') {
+        delete progress[key];
+      } else {
+        progress[key] = {
+          currentSlide: r.current_slide, completed: r.completed,
+          score: r.score, passed: r.passed,
+        };
+      }
+      const hash = window.location.hash.slice(1);
+      if (hash === '/admin/leaderboard') renderLeaderboard(true);
+      if (hash === '/admin/reports')     renderAdminReports();
+      if (hash === '/admin/dashboard')   renderAdminDashboard();
+      if (hash === '/admin/team')        renderAdminTeam();
     })
     .subscribe();
 
