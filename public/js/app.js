@@ -1492,6 +1492,9 @@ function showAddQuestionsModal(courseId) {
         <button class="btn btn-accent" style="width:100%;margin-bottom:.65rem;justify-content:center" onclick="aiGenerateForUrl('${courseId}')">
           🤖 AI Generate from ${getCourse(courseId)?.contentType === 'youtube' ? 'Video' : 'Slides'}
         </button>` : ''}
+        <button class="btn btn-outline" style="width:100%;margin-bottom:.65rem;justify-content:center" onclick="closeModal();setTimeout(()=>showExcelUploadModal('${courseId}'),200)">
+          📊 Upload Excel
+        </button>
         <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="closeModal();setTimeout(()=>showManualBuilderModal('${courseId}'),200)">
           ✍️ Manual Builder
         </button>
@@ -1500,6 +1503,175 @@ function showAddQuestionsModal(courseId) {
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
       </div>
     </div>`);
+}
+
+function showExcelUploadModal(courseId) {
+  const course = getCourse(courseId);
+  showModal(`
+    <div class="modal" style="max-width:520px" onclick="event.stopPropagation()">
+      <div class="gmodal-header">
+        <h2>Upload Questions from Excel</h2>
+        <button class="gmodal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="gmodal-body">
+        <div class="excel-upload-hint">
+          <strong>Required columns (row 1 = headers):</strong><br/>
+          <code>type</code> · <code>question</code> · <code>option_a</code> · <code>option_b</code> · <code>option_c</code> · <code>option_d</code> · <code>correct</code>
+          <div style="margin-top:.5rem;font-size:.8rem;color:var(--text-muted)">
+            For <strong>mc</strong>: correct = A, B, C, or D &nbsp;·&nbsp;
+            For <strong>tf</strong>: correct = TRUE or FALSE (option columns can be blank)
+          </div>
+        </div>
+        <div style="display:flex;gap:.6rem;margin-bottom:1rem">
+          <button class="btn btn-outline btn-sm" style="flex:1;justify-content:center" onclick="downloadQuestionsTemplate()">⬇ Download Template</button>
+        </div>
+        <div class="excel-drop-zone" id="excel-drop-zone" onclick="document.getElementById('excel-file-input').click()">
+          <div class="excel-drop-icon">📊</div>
+          <div class="excel-drop-label">Click to choose file or drag & drop</div>
+          <div class="excel-drop-sub">.xlsx or .xls</div>
+          <input type="file" id="excel-file-input" accept=".xlsx,.xls" style="display:none" onchange="handleExcelFile(this,'${courseId}')" />
+        </div>
+        <div id="excel-preview" style="display:none;margin-top:1rem"></div>
+      </div>
+      <div class="gmodal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="excel-save-btn" style="display:none" onclick="saveExcelQuestions('${courseId}')">Save Questions</button>
+      </div>
+    </div>`);
+
+  // drag & drop support
+  setTimeout(() => {
+    const zone = document.getElementById('excel-drop-zone');
+    if (!zone) return;
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragging'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragging'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault(); zone.classList.remove('dragging');
+      const file = e.dataTransfer.files[0];
+      if (file) handleExcelFile({ files: [file] }, courseId);
+    });
+  }, 100);
+}
+
+let _parsedExcelQuestions = [];
+
+function handleExcelFile(input, courseId) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+      const parsed = [];
+      const errors = [];
+
+      rows.forEach((row, i) => {
+        const rowNum = i + 2; // 1-indexed, row 1 = headers
+        const type = String(row.type || '').trim().toLowerCase();
+        const question = String(row.question || '').trim();
+        const correct = String(row.correct || '').trim().toUpperCase();
+
+        if (!type) { errors.push(`Row ${rowNum}: missing type`); return; }
+        if (!question) { errors.push(`Row ${rowNum}: missing question`); return; }
+        if (!['mc','tf'].includes(type)) { errors.push(`Row ${rowNum}: type must be "mc" or "tf"`); return; }
+
+        if (type === 'mc') {
+          const opts = [
+            String(row.option_a || '').trim(),
+            String(row.option_b || '').trim(),
+            String(row.option_c || '').trim(),
+            String(row.option_d || '').trim(),
+          ];
+          if (opts.some(o => !o)) { errors.push(`Row ${rowNum}: all 4 options required for mc`); return; }
+          const correctIdx = { A:0, B:1, C:2, D:3 }[correct];
+          if (correctIdx === undefined) { errors.push(`Row ${rowNum}: correct must be A, B, C, or D for mc`); return; }
+          parsed.push({ type: 'mc', question, options: opts, correct: correctIdx });
+        } else {
+          if (!['TRUE','FALSE'].includes(correct)) { errors.push(`Row ${rowNum}: correct must be TRUE or FALSE for tf`); return; }
+          parsed.push({ type: 'tf', question, correct: correct === 'TRUE' });
+        }
+      });
+
+      const preview = document.getElementById('excel-preview');
+      const saveBtn = document.getElementById('excel-save-btn');
+      if (!preview || !saveBtn) return;
+
+      if (errors.length) {
+        preview.style.display = 'block';
+        preview.innerHTML = `<div class="excel-errors">
+          <strong>⚠️ Fix these errors before saving:</strong>
+          <ul style="margin:.5rem 0 0 1rem">${errors.map(e => `<li>${esc(e)}</li>`).join('')}</ul>
+        </div>`;
+        saveBtn.style.display = 'none';
+        _parsedExcelQuestions = [];
+        return;
+      }
+
+      if (!parsed.length) {
+        preview.style.display = 'block';
+        preview.innerHTML = `<div class="excel-errors"><strong>⚠️ No valid rows found.</strong> Make sure row 1 contains the headers.</div>`;
+        saveBtn.style.display = 'none';
+        _parsedExcelQuestions = [];
+        return;
+      }
+
+      _parsedExcelQuestions = parsed;
+      const mcCount = parsed.filter(q => q.type === 'mc').length;
+      const tfCount = parsed.filter(q => q.type === 'tf').length;
+
+      preview.style.display = 'block';
+      preview.innerHTML = `
+        <div class="excel-success">
+          ✅ <strong>${parsed.length} questions ready</strong> — ${mcCount} multiple choice · ${tfCount} true/false
+        </div>
+        <div class="excel-preview-list">
+          ${parsed.slice(0, 5).map((q, i) => `
+            <div class="excel-preview-row">
+              <span class="badge ${q.type === 'mc' ? 'badge-pdf' : 'badge-none'}" style="flex-shrink:0">${q.type.toUpperCase()}</span>
+              <span style="font-size:.82rem;color:var(--text)">${esc(q.question)}</span>
+            </div>`).join('')}
+          ${parsed.length > 5 ? `<div style="font-size:.78rem;color:var(--text-muted);text-align:center;padding:.4rem">… and ${parsed.length - 5} more</div>` : ''}
+        </div>`;
+      saveBtn.style.display = '';
+    } catch(err) {
+      toast('Could not read file: ' + err.message, 'error');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function saveExcelQuestions(courseId) {
+  if (!_parsedExcelQuestions.length) { toast('No questions to save', 'error'); return; }
+  closeModal();
+  showLoader('Saving questions', 'Writing to database…');
+  questions[courseId] = _parsedExcelQuestions;
+  const { error } = await sb.from('questions').upsert({ course_id: courseId, questions_json: _parsedExcelQuestions });
+  hideLoader();
+  if (error) {
+    toast(`Save failed: ${error.message}`, 'error');
+  } else {
+    toast(`✅ ${_parsedExcelQuestions.length} questions saved!`);
+    _parsedExcelQuestions = [];
+    renderAdminCourses();
+  }
+}
+
+function downloadQuestionsTemplate() {
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['type', 'question', 'option_a', 'option_b', 'option_c', 'option_d', 'correct'],
+    ['mc', 'What is the capital of the Philippines?', 'Cebu', 'Manila', 'Davao', 'Quezon City', 'B'],
+    ['mc', 'Which law governs data privacy in the Philippines?', 'RA 9165', 'RA 8291', 'RA 10173', 'RA 7641', 'C'],
+    ['tf', 'Employees are entitled to at least one rest day per week.', '', '', '', '', 'TRUE'],
+    ['tf', 'The probationary period in the Philippines can exceed 12 months.', '', '', '', '', 'FALSE'],
+  ]);
+  // Set column widths
+  ws['!cols'] = [{ wch: 5 }, { wch: 52 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 9 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Questions');
+  XLSX.writeFile(wb, 'sprout-learn-questions-template.xlsx');
 }
 
 async function aiGenerateForExisting(courseId) {
