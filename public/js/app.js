@@ -2647,7 +2647,21 @@ function renderAdminReports() {
           const avg  = userAvgProgress(u.id);
           const teamName = allTeams.find(t=>t.id===u.teamId)?.name || '—';
           const maxDone  = userCompletions(topPerformers[0].id) || 1;
-          return `<div class="reports-top-item" style="animation-delay:${i*.06}s">
+          const assignedCids = getUserAssignments(u.id);
+          const courseHover = assignedCids.length ? `
+            <div class="rpt-hover-card">
+              <div class="rpt-hover-title">📚 Assigned Courses</div>
+              ${assignedCids.map(cid => {
+                const c = getCourse(cid);
+                const p = getProgress(u.id, cid);
+                return `<div class="rpt-hover-row">
+                  <span>${p.completed ? '✅' : '🕐'}</span>
+                  <span class="rpt-hover-name">${esc(c?.title || cid)}</span>
+                  ${p.score !== null ? `<span class="rpt-hover-score">${p.score}%</span>` : ''}
+                </div>`;
+              }).join('')}
+            </div>` : '';
+          return `<div class="reports-top-item rpt-hover-wrap" style="animation-delay:${i*.06}s">
             <div class="reports-top-rank">${medals[i]||`#${i+1}`}</div>
             ${avatarHTML(u, 38)}
             <div style="flex:1;min-width:0">
@@ -2661,6 +2675,7 @@ function renderAdminReports() {
               <div style="font-weight:700;color:var(--primary)">${done} done</div>
               <div style="color:var(--text-muted)">${avg}% progress</div>
             </div>
+            ${courseHover}
           </div>`;
         }).join('') : '<p style="color:var(--text-muted);font-size:.9rem">No activity yet.</p>'}
       </div>
@@ -2680,8 +2695,21 @@ function renderAdminReports() {
           <tbody>
             ${courseRows.length ? courseRows.map(r => {
               const barColor = r.passRate >= 70 ? '#2e7d32' : r.passRate >= 40 ? '#f57c00' : r.passRate > 0 ? '#c62828' : '#ccc';
-              return `<tr>
-                <td>
+              const assignedUsers = learners().filter(u => isAssigned(u.id, r.c.id));
+              const peopleHover = assignedUsers.length ? `
+                <div class="rpt-hover-card rpt-hover-card--right">
+                  <div class="rpt-hover-title">👥 Assigned People</div>
+                  ${assignedUsers.map(u => {
+                    const p = getProgress(u.id, r.c.id);
+                    return `<div class="rpt-hover-row">
+                      <span>${p.completed ? '✅' : '🕐'}</span>
+                      <span class="rpt-hover-name">${esc(u.name)}</span>
+                      ${p.score !== null ? `<span class="rpt-hover-score">${p.score}%</span>` : ''}
+                    </div>`;
+                  }).join('')}
+                </div>` : '';
+              return `<tr class="rpt-hover-wrap">
+                <td style="position:relative">
                   <div style="display:flex;align-items:center;gap:.6rem">
                     ${r.c.coverUrl ? `<img src="${r.c.coverUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0" />` : `<div style="width:36px;height:36px;border-radius:6px;background:#e8f5e9;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">${CAT_EMOJI[r.c.category]||'📚'}</div>`}
                     <div>
@@ -2689,6 +2717,7 @@ function renderAdminReports() {
                       <div style="font-size:.75rem;color:var(--text-muted)">${esc(r.c.category)}</div>
                     </div>
                   </div>
+                  ${peopleHover}
                 </td>
                 <td style="text-align:center;font-weight:600">${r.assigned}</td>
                 <td style="text-align:center;font-weight:600">${r.completed}</td>

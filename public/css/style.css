@@ -1158,6 +1158,48 @@ img { max-width: 100%; }
   flex-shrink: 0;
 }
 
+/* ─── Reports Hover Cards ─────────────────────────────────────────────────── */
+.rpt-hover-wrap { position: relative; }
+.rpt-hover-card {
+  display: none;
+  position: absolute;
+  left: 0; top: calc(100% + 6px);
+  min-width: 240px;
+  max-width: 320px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 200;
+  padding: .6rem .75rem .5rem;
+  pointer-events: none;
+}
+.rpt-hover-card--right { left: auto; right: 0; }
+.rpt-hover-wrap:hover .rpt-hover-card { display: block; }
+.rpt-hover-title {
+  font-size: .75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-bottom: .45rem;
+  padding-bottom: .35rem;
+  border-bottom: 1px solid var(--border);
+}
+.rpt-hover-row {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .3rem 0;
+  font-size: .8rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+.rpt-hover-row:last-child { border-bottom: none; }
+.rpt-hover-name { flex: 1; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rpt-hover-score { font-weight: 700; color: var(--primary); flex-shrink: 0; font-size: .75rem; }
+
 /* ─── Assignee Saving Spinner ─────────────────────────────────────────────── */
 .assignee-saving {
   margin-left: auto;
