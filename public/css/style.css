@@ -1371,6 +1371,147 @@ img { max-width: 100%; }
 .reports-table tbody tr:last-child td { border-bottom: none; }
 .reports-table tbody tr:hover { background: #f9fbf9; }
 
+/* ─── Learner Dashboard — Team Widget ────────────────────────────────────── */
+.ld-team-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 1.25rem 1.25rem 1rem;
+  margin-bottom: 1.5rem;
+  animation: fadeUp .35s ease both;
+}
+.ld-team-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.1rem;
+}
+.ld-team-name {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text);
+}
+.ld-team-sub {
+  font-size: .8rem;
+  color: var(--text-muted);
+  margin-top: .2rem;
+}
+.ld-team-stats {
+  display: flex;
+  gap: .6rem;
+}
+.ld-team-stat {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .5rem .75rem;
+  text-align: center;
+  min-width: 64px;
+  font-size: .72rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.ld-team-stat span {
+  display: block;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.2;
+}
+.ld-team-standings { display: flex; flex-direction: column; gap: .45rem; }
+.ld-team-row {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  font-size: .84rem;
+  padding: .35rem 0;
+}
+.ld-team-row--me {
+  font-weight: 700;
+  color: var(--primary);
+}
+.ld-team-row-rank { width: 1.6rem; text-align: center; font-size: .9rem; flex-shrink: 0; }
+.ld-team-row-name {
+  width: 130px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+}
+.ld-team-bar-wrap {
+  flex: 1;
+  height: 7px;
+  background: var(--bg-alt);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.ld-team-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width .8s ease;
+}
+.ld-team-row-rate { width: 36px; text-align: right; flex-shrink: 0; font-size: .78rem; color: var(--text-muted); }
+.ld-you-badge {
+  font-size: .68rem;
+  background: var(--accent);
+  color: var(--primary);
+  font-weight: 800;
+  padding: .1rem .45rem;
+  border-radius: 99px;
+  flex-shrink: 0;
+}
+
+/* ─── Leaderboard — Two Column + Team Standings ──────────────────────────── */
+.lb-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (max-width: 860px) {
+  .lb-two-col { grid-template-columns: 1fr; }
+}
+.lb-item--me {
+  background: linear-gradient(135deg, #f0faf0 0%, #e8f5e9 100%);
+  border-color: var(--accent-dark) !important;
+}
+.lb-team-list { display: flex; flex-direction: column; gap: .6rem; }
+.lb-team-item {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .85rem .9rem;
+  box-shadow: var(--shadow);
+  animation: fadeUp .3s ease both;
+  transition: box-shadow var(--transition);
+}
+.lb-team-item:hover { box-shadow: var(--shadow-md); }
+.lb-team-item--me {
+  border-color: var(--accent-dark);
+  background: linear-gradient(135deg, #f0faf0 0%, #e8f5e9 100%);
+}
+.lb-team-rank { font-size: 1.3rem; flex-shrink: 0; width: 2rem; text-align: center; }
+.lb-team-bar-wrap {
+  height: 6px;
+  background: var(--bg-alt);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.lb-team-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width .8s ease;
+}
+
 /* ─── Side Panel ──────────────────────────────────────────────────────────── */
 .side-panel-overlay {
   position: fixed;

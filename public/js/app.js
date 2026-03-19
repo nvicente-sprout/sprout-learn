@@ -2630,37 +2630,88 @@ function renderLeaderboard(isAdmin, filterCourseId) {
     return;
   }
 
+  // Team standings
+  const teamStandings = allTeams.map(team => {
+    const members   = learners().filter(u => u.teamId === team.id);
+    const tAssigned  = members.reduce((s, u) => s + getUserAssignments(u.id).length, 0);
+    const tCompleted = members.reduce((s, u) => s + userCompletions(u.id), 0);
+    const rate = tAssigned ? Math.round((tCompleted / tAssigned) * 100) : 0;
+    const scores = members.flatMap(u =>
+      getUserAssignments(u.id).map(cid => getProgress(u.id, cid)).filter(p => p.score !== null && p.score !== undefined).map(p => p.score)
+    );
+    const avgSc = scores.length ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : null;
+    const totalXP = members.reduce((s, u) => s + userXP(u.id), 0);
+    return { team, members: members.length, tAssigned, tCompleted, rate, avgSc, totalXP };
+  }).sort((a,b) => b.rate - a.rate || b.totalXP - a.totalXP);
+  const maxRate = Math.max(...teamStandings.map(r => r.rate), 1);
+  const myTeamId = currentUser?.teamId;
+
   setMain(`
-    <div class="page-header"><h1>🏆 Leaderboard</h1><p>Team XP rankings & achievements</p></div>
+    <div class="page-header"><h1>🏆 Leaderboard</h1><p>Individual rankings, team standings & achievements</p></div>
     ${filterBar}
-    <div class="leaderboard-list">
-      ${overallRanked.map((u, i) => {
-        const next = userNextLevel(u.id);
-        const xpToNext = next ? `<div style="font-size:.7rem;color:var(--text-muted)">${next.xpNeeded} XP to ${next.label}</div>` : `<div style="font-size:.7rem;color:var(--accent);font-weight:700">Max Level!</div>`;
-        const badgeIcons = u.badges.map(b => `<span title="${b.label}: ${b.desc}" style="font-size:1.1rem;cursor:default">${b.icon}</span>`).join('');
-        return `<div class="lb-item ${i===0?'top1':''}" style="animation-delay:${i*0.07}s">
-          <div class="lb-rank">${medals[i] || `#${i+1}`}</div>
-          <div class="user-avatar" style="background:${u.color};width:42px;height:42px">${initials(u.name)}</div>
-          <div class="lb-info">
-            <div class="lb-name">${esc(u.name)}</div>
-            <div class="lb-role">${u.level.icon} ${u.level.label} &nbsp;·&nbsp; ${esc(allTeams.find(t=>t.id===u.teamId)?.name||'')}</div>
-          </div>
-          <div style="display:flex;gap:.3rem;align-items:center;flex-wrap:wrap">${badgeIcons}</div>
-          <div style="text-align:right;min-width:90px">
-            <div style="font-size:1.1rem;font-weight:800;color:var(--accent)">${u.xp} XP</div>
-            ${xpToNext}
-          </div>
-        </div>`;
-      }).join('')}
-    </div>
-    <div class="badges-legend">
-      <p class="section-heading">Badges</p>
-      <div class="badges-grid">
-        ${BADGES.map(b => `
-          <div class="badge-card">
-            <span class="badge-card-icon">${b.icon}</span>
-            <div><div style="font-weight:700;font-size:.85rem">${b.label}</div><div style="font-size:.75rem;color:var(--text-muted)">${b.desc}</div></div>
-          </div>`).join('')}
+    <div class="lb-two-col">
+      <div>
+        <p class="section-heading">Individual Rankings</p>
+        <div class="leaderboard-list">
+          ${overallRanked.map((u, i) => {
+            const next = userNextLevel(u.id);
+            const xpToNext = next ? `<div style="font-size:.7rem;color:var(--text-muted)">${next.xpNeeded} XP to ${next.label}</div>` : `<div style="font-size:.7rem;color:var(--accent);font-weight:700">Max Level!</div>`;
+            const badgeIcons = u.badges.map(b => `<span title="${b.label}: ${b.desc}" style="font-size:1.1rem;cursor:default">${b.icon}</span>`).join('');
+            const isMe = u.id === currentUser?.id;
+            return `<div class="lb-item ${i===0?'top1':''} ${isMe?'lb-item--me':''}" style="animation-delay:${i*0.07}s">
+              <div class="lb-rank">${medals[i] || `#${i+1}`}</div>
+              <div class="user-avatar" style="background:${u.color};width:42px;height:42px">${initials(u.name)}</div>
+              <div class="lb-info">
+                <div class="lb-name">${esc(u.name)}${isMe?'<span class="ld-you-badge" style="margin-left:.4rem">You</span>':''}</div>
+                <div class="lb-role">${u.level.icon} ${u.level.label} &nbsp;·&nbsp; ${esc(allTeams.find(t=>t.id===u.teamId)?.name||'')}</div>
+              </div>
+              <div style="display:flex;gap:.3rem;align-items:center;flex-wrap:wrap">${badgeIcons}</div>
+              <div style="text-align:right;min-width:90px">
+                <div style="font-size:1.1rem;font-weight:800;color:var(--accent)">${u.xp} XP</div>
+                ${xpToNext}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+      <div>
+        <p class="section-heading">Team Standings</p>
+        <div class="lb-team-list">
+          ${teamStandings.length === 0 ? `<p style="color:var(--text-muted);font-size:.9rem">No teams yet.</p>` :
+            teamStandings.map((r, i) => {
+              const teamMedals = ['🥇','🥈','🥉'];
+              const isMe = r.team.id === myTeamId;
+              const barW = maxRate > 0 ? Math.round((r.rate / maxRate) * 100) : 0;
+              const barColor = r.rate >= 70 ? '#2e7d32' : r.rate >= 40 ? '#f57c00' : '#c62828';
+              return `<div class="lb-team-item ${isMe?'lb-team-item--me':''}" style="animation-delay:${i*0.08}s">
+                <div class="lb-team-rank">${teamMedals[i]||`#${i+1}`}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.35rem">
+                    <span style="font-weight:700;font-size:.95rem">${esc(r.team.name)}</span>
+                    ${isMe?'<span class="ld-you-badge">Your team</span>':''}
+                  </div>
+                  <div style="display:flex;gap:.75rem;font-size:.77rem;color:var(--text-muted);margin-bottom:.5rem">
+                    <span>👥 ${r.members} member${r.members!==1?'s':''}</span>
+                    <span>✅ ${r.tCompleted}/${r.tAssigned} done</span>
+                    ${r.avgSc !== null ? `<span>📊 ${r.avgSc}% avg</span>` : ''}
+                    <span>⚡ ${r.totalXP} XP</span>
+                  </div>
+                  <div class="lb-team-bar-wrap">
+                    <div class="lb-team-bar-fill" style="width:${barW}%;background:${isMe?'var(--accent-dark)':barColor}"></div>
+                  </div>
+                </div>
+                <div style="font-size:1.05rem;font-weight:800;color:${isMe?'var(--accent-dark)':barColor};min-width:42px;text-align:right">${r.rate}%</div>
+              </div>`;
+            }).join('')}
+        </div>
+        <p class="section-heading" style="margin-top:1.5rem">Badges</p>
+        <div class="badges-grid">
+          ${BADGES.map(b => `
+            <div class="badge-card">
+              <span class="badge-card-icon">${b.icon}</span>
+              <div><div style="font-weight:700;font-size:.85rem">${b.label}</div><div style="font-size:.75rem;color:var(--text-muted)">${b.desc}</div></div>
+            </div>`).join('')}
+        </div>
       </div>
     </div>`);
 }
@@ -3041,6 +3092,56 @@ function renderLearnerDashboard() {
   const continueList = assigned
     .filter(cid => !getProgress(uid, cid).completed);
 
+  // ── Team performance widget ──────────────────────────────────────────────
+  const myTeam = allTeams.find(t => t.id === currentUser.teamId);
+  const teamStandings = allTeams.map(team => {
+    const members  = learners().filter(u => u.teamId === team.id);
+    const tAssigned  = members.reduce((s, u) => s + getUserAssignments(u.id).length, 0);
+    const tCompleted = members.reduce((s, u) => s + userCompletions(u.id), 0);
+    const rate = tAssigned ? Math.round((tCompleted / tAssigned) * 100) : 0;
+    const scores = members.flatMap(u =>
+      getUserAssignments(u.id).map(cid => getProgress(u.id, cid)).filter(p => p.score !== null && p.score !== undefined).map(p => p.score)
+    );
+    const avgSc = scores.length ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : null;
+    return { team, members: members.length, tAssigned, tCompleted, rate, avgSc };
+  }).sort((a,b) => b.rate - a.rate);
+
+  const myTeamData  = myTeam ? teamStandings.find(r => r.team.id === myTeam.id) : null;
+  const myTeamRank  = myTeam ? teamStandings.findIndex(r => r.team.id === myTeam.id) + 1 : null;
+  const maxRate     = Math.max(...teamStandings.map(r => r.rate), 1);
+  const rankSuffix  = n => ['','st','nd','rd'][n] || 'th';
+
+  const teamWidget = myTeamData ? `
+    <p class="section-heading">Your Team</p>
+    <div class="ld-team-card">
+      <div class="ld-team-header">
+        <div>
+          <div class="ld-team-name">${esc(myTeam.name)}</div>
+          <div class="ld-team-sub">${myTeamRank}${rankSuffix(myTeamRank)} place &nbsp;·&nbsp; ${myTeamData.members} member${myTeamData.members!==1?'s':''}</div>
+        </div>
+        <div class="ld-team-stats">
+          <div class="ld-team-stat"><span>${myTeamData.rate}%</span>Completion</div>
+          <div class="ld-team-stat"><span>${myTeamData.avgSc !== null ? myTeamData.avgSc+'%' : '—'}</span>Avg Score</div>
+          <div class="ld-team-stat"><span>${myTeamData.tCompleted}</span>Done</div>
+        </div>
+      </div>
+      <div class="ld-team-standings">
+        ${teamStandings.map((r, i) => {
+          const isMe = myTeam && r.team.id === myTeam.id;
+          const bar  = maxRate > 0 ? Math.round((r.rate / maxRate) * 100) : 0;
+          const medals = ['🥇','🥈','🥉'];
+          return `<div class="ld-team-row${isMe?' ld-team-row--me':''}">
+            <div class="ld-team-row-rank">${medals[i]||`#${i+1}`}</div>
+            <div class="ld-team-row-name">${esc(r.team.name)}${isMe?'<span class="ld-you-badge">You</span>':''}</div>
+            <div class="ld-team-bar-wrap">
+              <div class="ld-team-bar-fill" style="width:${bar}%;background:${isMe?'var(--accent-dark)':'#a8d5a8'}"></div>
+            </div>
+            <div class="ld-team-row-rate">${r.rate}%</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
   setMain(`
     <div class="page-header fade-up">
       <h1>Welcome, ${esc(currentUser.name.split(' ')[0])} 👋</h1>
@@ -3052,6 +3153,7 @@ function renderLearnerDashboard() {
       ${statCard('Completed', done, '', '#2d5a2d', 1)}
       ${statCard('Avg Progress', avg, '%', '#3a7a3a', 2)}
     </div>
+    ${teamWidget}
     <p class="section-heading">Continue Learning</p>
     ${continueList.length ? `
       <div class="cl-grid">
