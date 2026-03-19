@@ -996,6 +996,100 @@ img { max-width: 100%; }
 /* ─── Divider ─────────────────────────────────────────────────────────────── */
 .divider { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
 
+/* ─── SCORM Badge ─────────────────────────────────────────────────────────── */
+.badge-scorm { background: #e8eaf6; color: #3949ab; }
+
+/* ─── Reports ─────────────────────────────────────────────────────────────── */
+.reports-section { margin-top: 2rem; }
+
+.reports-team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-top: .75rem;
+}
+.reports-team-card {
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  padding: 1.1rem 1.25rem 1rem;
+  box-shadow: var(--shadow);
+  animation: fadeUp .35s ease both;
+}
+.reports-team-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: .3rem;
+}
+.reports-team-name {
+  font-weight: 700;
+  font-size: .95rem;
+  color: var(--primary);
+}
+.reports-team-rate {
+  font-weight: 800;
+  font-size: 1.05rem;
+  padding: .15rem .55rem;
+  border-radius: 99px;
+}
+.rate-high { background: #e8f5e9; color: #2e7d32; }
+.rate-mid  { background: #fff3e0; color: #e65100; }
+.rate-low  { background: #ffebee; color: #c62828; }
+.reports-team-meta { font-size: .78rem; color: var(--text-muted); }
+
+.reports-top-list {
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+  margin-top: .75rem;
+}
+.reports-top-item {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .75rem 1rem;
+  box-shadow: var(--shadow);
+  animation: fadeUp .35s ease both;
+}
+.reports-top-rank { font-size: 1.3rem; width: 2rem; text-align: center; flex-shrink: 0; }
+
+.reports-table-wrap {
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  overflow-x: auto;
+  margin-top: .75rem;
+}
+.reports-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .85rem;
+}
+.reports-table th {
+  text-align: left;
+  padding: .75rem 1rem;
+  background: #f9fbf9;
+  border-bottom: 1px solid var(--border);
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+.reports-table td {
+  padding: .8rem 1rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.reports-table tbody tr:last-child td { border-bottom: none; }
+.reports-table tbody tr:hover { background: #f9fbf9; }
+
 /* ─── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 860px) {
   .header-nav { display: none; }

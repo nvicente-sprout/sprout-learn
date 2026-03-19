@@ -45,9 +45,10 @@ let adminViewingAsLearner = false;
 let assignments   = {};  // { userId: [courseId, ...] }
 let progress      = {};  // { 'userId_courseId': { currentSlide, completed, score, passed } }
 let questions     = {};  // { courseId: [...] }
-let viewerPdfDoc  = null;
-let viewerPage    = 1;
-let viewerCourseId = null;
+let viewerPdfDoc    = null;
+let viewerPage      = 1;
+let viewerCourseId  = null;
+let _pdfKeyHandler  = null;
 
 // Assessment state
 let assessmentAnswers  = [];
@@ -248,7 +249,7 @@ function courseFromRow(row) {
     category: row.category, type: row.type, contentType: row.content_type,
     totalPages: row.total_pages || 0, pdfDataUrl: row.pdf_url || null,
     coverUrl: row.cover_url || null, youtubeId: row.youtube_id || null,
-    slidesUrl: row.slides_url || null,
+    slidesUrl: row.slides_url || null, scormUrl: row.scorm_url || null,
   };
 }
 function courseToRow(c) {
@@ -257,7 +258,7 @@ function courseToRow(c) {
     category: c.category, type: c.type, content_type: c.contentType,
     total_pages: c.totalPages || 0, pdf_url: c.pdfDataUrl || null,
     cover_url: c.coverUrl || null, youtube_id: c.youtubeId || null,
-    slides_url: c.slidesUrl || null,
+    slides_url: c.slidesUrl || null, scorm_url: c.scormUrl || null,
   };
 }
 
@@ -464,6 +465,7 @@ function handleRoute() {
   if (hash === '/admin/dashboard')     renderAdminDashboard();
   else if (hash === '/admin/courses')  renderAdminCourses();
   else if (hash === '/admin/team')      renderAdminTeam();
+  else if (hash === '/admin/reports')   renderAdminReports();
   else if (hash === '/admin/leaderboard') renderLeaderboard(true);
   else if (hash === '/admin/settings')  renderAdminSettings();
   else if (hash === '/learner/dashboard')  renderLearnerDashboard();
@@ -554,6 +556,7 @@ function renderLayout() {
     { href: '/admin/dashboard',   label: 'Dashboard',     icon: iconHome() },
     { href: '/admin/courses',     label: 'Courses',       icon: iconCourses() },
     { href: '/admin/team',        label: 'Team Progress', icon: iconUsers() },
+    { href: '/admin/reports',     label: 'Reports',       icon: iconReport() },
     { href: '/admin/leaderboard', label: 'Leaderboard',   icon: iconTrophy() },
     { href: '/admin/settings',    label: 'Settings',      icon: iconSettings() },
   ] : [
@@ -682,6 +685,7 @@ function renderAdminCourses(filterQ = '', filterCat = '') {
       <div class="toolbar-spacer"></div>
       <button class="btn btn-outline btn-sm" onclick="showUploadModal()">📄 Upload PDF</button>
       <button class="btn btn-outline btn-sm" onclick="showAddUrlCourseModal()">🔗 YouTube / Slides</button>
+      <button class="btn btn-outline btn-sm" onclick="showAddScormModal()">📦 SCORM</button>
       <button class="btn btn-primary btn-sm" onclick="showCreateCourseModal()">+ New Course</button>
     </div>
     <div class="course-grid">
@@ -1025,6 +1029,76 @@ async function submitUrlCourse() {
     toast('Course added!');
     renderAdminCourses();
   }
+}
+
+// ─── Add SCORM Modal ──────────────────────────────────────────────────────────
+function showAddScormModal() {
+  showModal(`
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="gmodal-header">
+        <h2>Add SCORM Course</h2>
+        <button class="gmodal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="gmodal-body">
+        <div class="form-group">
+          <label class="form-label">SCORM Package URL *</label>
+          <input id="scorm-url" class="form-input" placeholder="https://yourhost.com/scorm/course/index.html" />
+          <div class="form-hint">Paste the URL to the SCORM package's index.html (must be hosted and publicly accessible)</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Course Title *</label>
+          <input id="scorm-title" class="form-input" placeholder="Enter course title" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea id="scorm-desc" class="form-textarea" placeholder="Brief description…"></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <select id="scorm-cat" class="form-select">
+              ${CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Type</label>
+            <select id="scorm-type" class="form-select"><option>Free</option><option>Paid</option></select>
+          </div>
+        </div>
+      </div>
+      <div class="gmodal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitScormCourse()">Add SCORM Course</button>
+      </div>
+    </div>`);
+}
+
+async function submitScormCourse() {
+  const scormUrl = document.getElementById('scorm-url')?.value.trim();
+  const title    = document.getElementById('scorm-title')?.value.trim();
+  if (!scormUrl) { toast('Please enter a SCORM URL', 'error'); return; }
+  if (!title)    { toast('Please enter a course title', 'error'); return; }
+  const cat  = document.getElementById('scorm-cat')?.value || CATEGORIES[0];
+  const type = document.getElementById('scorm-type')?.value || 'Free';
+  const desc = document.getElementById('scorm-desc')?.value.trim() || '';
+
+  const newCourse = {
+    id: nextCourseId(), title, description: desc, category: cat, type,
+    contentType: 'scorm', scormUrl, totalPages: 0,
+    pdfDataUrl: null, youtubeId: null, slidesUrl: null, coverUrl: null,
+  };
+  closeModal();
+  showLoader('Adding course', 'Saving to database…');
+  courses.unshift(newCourse);
+  const { error } = await sb.from('courses').upsert(courseToRow(newCourse));
+  hideLoader();
+  if (error) {
+    toast(`Save failed: ${error.message}`, 'error');
+    courses.shift();
+  } else {
+    toast('✅ SCORM course added!');
+  }
+  renderAdminCourses();
 }
 
 // ─── Upload PDF Modal ─────────────────────────────────────────────────────────
@@ -2069,6 +2143,180 @@ function renderLeaderboard(isAdmin, filterCourseId) {
     </div>`);
 }
 
+// ─── Admin Reports ────────────────────────────────────────────────────────────
+function renderAdminReports() {
+  setTitle('Reports');
+  const allLearners = learners();
+  const totalLearners    = allLearners.length;
+  const totalCompletions = allLearners.reduce((s, u) => s + userCompletions(u.id), 0);
+  const totalAssigned    = allLearners.reduce((s, u) => s + getUserAssignments(u.id).length, 0);
+  const scoredProgress   = Object.values(progress).filter(p => p.score !== null && p.score !== undefined);
+  const avgScore         = scoredProgress.length
+    ? Math.round(scoredProgress.reduce((s, p) => s + p.score, 0) / scoredProgress.length)
+    : 0;
+  const completionRate   = totalAssigned ? Math.round((totalCompletions / totalAssigned) * 100) : 0;
+
+  // Per-team stats
+  const teamRows = allTeams.map(team => {
+    const members = allLearners.filter(u => u.teamId === team.id);
+    const assigned = members.reduce((s, u) => s + getUserAssignments(u.id).length, 0);
+    const completed = members.reduce((s, u) => s + userCompletions(u.id), 0);
+    const rate = assigned ? Math.round((completed / assigned) * 100) : 0;
+    const teamScores = members.flatMap(u =>
+      getUserAssignments(u.id).map(cid => getProgress(u.id, cid)).filter(p => p.score !== null && p.score !== undefined).map(p => p.score)
+    );
+    const teamAvgScore = teamScores.length ? Math.round(teamScores.reduce((a,b)=>a+b,0)/teamScores.length) : null;
+    return { team, members, assigned, completed, rate, teamAvgScore };
+  }).sort((a,b) => b.rate - a.rate);
+
+  // Per-course stats
+  const courseRows = courses.map(c => {
+    const assignedUsers = allLearners.filter(u => isAssigned(u.id, c.id));
+    const completedUsers = assignedUsers.filter(u => getProgress(u.id, c.id).completed);
+    const cScores = assignedUsers.map(u => getProgress(u.id, c.id)).filter(p => p.score !== null && p.score !== undefined).map(p => p.score);
+    const cAvgScore = cScores.length ? Math.round(cScores.reduce((a,b)=>a+b,0)/cScores.length) : null;
+    const passRate = assignedUsers.length ? Math.round((completedUsers.length / assignedUsers.length) * 100) : 0;
+    return { c, assigned: assignedUsers.length, completed: completedUsers.length, passRate, cAvgScore };
+  }).sort((a,b) => b.assigned - a.assigned);
+
+  // Top performers
+  const topPerformers = [...allLearners]
+    .sort((a,b) => userCompletions(b.id) - userCompletions(a.id) || userAvgProgress(b.id) - userAvgProgress(a.id))
+    .slice(0, 5);
+
+  const colorBar = (pct, color) =>
+    `<div style="background:#e8f5e9;border-radius:99px;height:8px;overflow:hidden;flex:1">
+      <div style="width:${pct}%;height:100%;background:${color};border-radius:99px;transition:width .6s"></div>
+    </div>`;
+
+  setMain(`
+    <div class="page-header fade-up">
+      <h1>Reports</h1>
+      <p>Learning analytics and team performance</p>
+      <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="exportReportsCsv()">⬇ Export CSV</button>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card" style="border-top:3px solid #1B3A1B;animation-delay:0s">
+        <div class="stat-label">Total Learners</div>
+        <div class="stat-value" data-target="${totalLearners}">0</div>
+      </div>
+      <div class="stat-card" style="border-top:3px solid #2d5a2d;animation-delay:.07s">
+        <div class="stat-label">Total Completions</div>
+        <div class="stat-value" data-target="${totalCompletions}">0</div>
+      </div>
+      <div class="stat-card" style="border-top:3px solid #3a7a3a;animation-delay:.14s">
+        <div class="stat-label">Overall Completion Rate</div>
+        <div class="stat-value" data-target="${completionRate}">0</div>
+        <div class="stat-suffix">%</div>
+      </div>
+      <div class="stat-card" style="border-top:3px solid #4a9e4a;animation-delay:.21s">
+        <div class="stat-label">Avg Assessment Score</div>
+        <div class="stat-value" data-target="${avgScore}">0</div>
+        <div class="stat-suffix">%</div>
+      </div>
+    </div>
+
+    <div class="reports-section">
+      <p class="section-heading">Team Performance</p>
+      <div class="reports-team-grid">
+        ${teamRows.length ? teamRows.map((r, i) => `
+          <div class="reports-team-card" style="animation-delay:${i*.07}s">
+            <div class="reports-team-header">
+              <div class="reports-team-name">${esc(r.team.name)}</div>
+              <div class="reports-team-rate ${r.rate >= 70 ? 'rate-high' : r.rate >= 40 ? 'rate-mid' : 'rate-low'}">${r.rate}%</div>
+            </div>
+            <div class="reports-team-meta">${r.members.length} member${r.members.length!==1?'s':''} · ${r.completed}/${r.assigned} completed</div>
+            <div style="display:flex;align-items:center;gap:.6rem;margin-top:.5rem">
+              ${colorBar(r.rate, r.rate >= 70 ? '#2e7d32' : r.rate >= 40 ? '#f57c00' : '#c62828')}
+              <span style="font-size:.78rem;color:var(--text-muted);white-space:nowrap">${r.teamAvgScore !== null ? `avg ${r.teamAvgScore}%` : 'no scores yet'}</span>
+            </div>
+          </div>`).join('') : '<p style="color:var(--text-muted);font-size:.9rem">No teams configured yet.</p>'}
+      </div>
+    </div>
+
+    <div class="reports-section">
+      <p class="section-heading">Top Performers</p>
+      <div class="reports-top-list">
+        ${topPerformers.length ? topPerformers.map((u, i) => {
+          const medals = ['🥇','🥈','🥉','4️⃣','5️⃣'];
+          const done = userCompletions(u.id);
+          const avg  = userAvgProgress(u.id);
+          const teamName = allTeams.find(t=>t.id===u.teamId)?.name || '—';
+          return `<div class="reports-top-item" style="animation-delay:${i*.06}s">
+            <div class="reports-top-rank">${medals[i]||`#${i+1}`}</div>
+            ${avatarHTML(u, 38)}
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:600;font-size:.9rem">${esc(u.name)}</div>
+              <div style="font-size:.77rem;color:var(--text-muted)">${esc(teamName)}</div>
+            </div>
+            <div style="text-align:right;font-size:.82rem">
+              <div style="font-weight:700;color:var(--primary)">${done} completed</div>
+              <div style="color:var(--text-muted)">${avg}% avg progress</div>
+            </div>
+          </div>`;
+        }).join('') : '<p style="color:var(--text-muted);font-size:.9rem">No activity yet.</p>'}
+      </div>
+    </div>
+
+    <div class="reports-section">
+      <p class="section-heading">Course Performance</p>
+      <div class="reports-table-wrap">
+        <table class="reports-table">
+          <thead><tr>
+            <th>Course</th>
+            <th>Assigned</th>
+            <th>Completed</th>
+            <th>Completion Rate</th>
+            <th>Avg Score</th>
+          </tr></thead>
+          <tbody>
+            ${courseRows.length ? courseRows.map(r => `
+              <tr>
+                <td>
+                  <div style="display:flex;align-items:center;gap:.6rem">
+                    ${r.c.coverUrl ? `<img src="${r.c.coverUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0" />` : `<div style="width:36px;height:36px;border-radius:6px;background:#e8f5e9;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">${CAT_EMOJI[r.c.category]||'📚'}</div>`}
+                    <div>
+                      <div style="font-weight:600;font-size:.85rem">${esc(r.c.title)}</div>
+                      <div style="font-size:.75rem;color:var(--text-muted)">${esc(r.c.category)}</div>
+                    </div>
+                  </div>
+                </td>
+                <td style="text-align:center;font-weight:600">${r.assigned}</td>
+                <td style="text-align:center;font-weight:600">${r.completed}</td>
+                <td>
+                  <div style="display:flex;align-items:center;gap:.5rem">
+                    ${colorBar(r.passRate, r.passRate >= 70 ? '#2e7d32' : r.passRate >= 40 ? '#f57c00' : r.passRate > 0 ? '#c62828' : '#ccc')}
+                    <span style="font-size:.8rem;font-weight:600;color:${r.passRate >= 70 ? '#2e7d32' : r.passRate >= 40 ? '#f57c00' : 'var(--text-muted)'};">${r.passRate}%</span>
+                  </div>
+                </td>
+                <td style="text-align:center;color:var(--text-muted);font-size:.85rem">${r.cAvgScore !== null ? r.cAvgScore + '%' : '—'}</td>
+              </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:2rem">No courses yet.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>`);
+}
+
+function exportReportsCsv() {
+  const allLearners = learners();
+  const rows = [['Name','Team','Email','Assigned','Completed','Avg Progress %','Avg Score %']];
+  allLearners.forEach(u => {
+    const teamName = allTeams.find(t=>t.id===u.teamId)?.name || '';
+    const assigned  = getUserAssignments(u.id).length;
+    const completed = userCompletions(u.id);
+    const avgProg   = userAvgProgress(u.id);
+    const scores    = getUserAssignments(u.id).map(cid => getProgress(u.id, cid)).filter(p=>p.score!==null&&p.score!==undefined).map(p=>p.score);
+    const avgSc     = scores.length ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : '';
+    rows.push([u.name, teamName, u.email, assigned, completed, avgProg, avgSc]);
+  });
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `sprout-learn-report-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
 // ─── Learner Dashboard ────────────────────────────────────────────────────────
 function renderLearnerDashboard() {
   setTitle('Dashboard');
@@ -2345,9 +2593,10 @@ async function renderCourseViewer(courseId) {
           <div class="viewer-dots" id="viewer-dots"></div>
           <span class="viewer-slide-counter" id="viewer-counter">Slide ${viewerPage} of ${course.totalPages}</span>
           <button class="viewer-btn" id="viewer-next" onclick="pdfNextPage()">Next →</button>
-        </div>` : course.contentType === 'youtube' ? `
-        <div class="viewer-bottombar" style="justify-content:center">
-          ${questions[courseId] ? `<button class="viewer-btn accent" onclick="navigate('/assessment/${courseId}')">Take Assessment →</button>` : ''}
+        </div>` : course.contentType === 'scorm' ? `
+        <div class="viewer-bottombar" style="justify-content:center;gap:1rem">
+          <button class="viewer-btn accent" onclick="markScormComplete('${courseId}')">✅ Mark as Complete</button>
+          ${questions[courseId] ? `<button class="viewer-btn accent" onclick="navigate('/assessment/${courseId}')">📝 Take Assessment</button>` : ''}
         </div>` : `
         <div class="viewer-bottombar" style="justify-content:center">
           ${questions[courseId] ? `<button class="viewer-btn accent" onclick="navigate('/assessment/${courseId}')">Take Assessment →</button>` : ''}
@@ -2355,8 +2604,21 @@ async function renderCourseViewer(courseId) {
     </div>`;
 
   if (course.contentType === 'pdf' && course.pdfDataUrl) {
+    // Attach arrow key navigation
+    _pdfKeyHandler = (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); pdfNextPage(); }
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); pdfPrevPage(); }
+    };
+    document.addEventListener('keydown', _pdfKeyHandler);
     await initPdfViewer(course);
   }
+}
+
+function markScormComplete(courseId) {
+  setProgress(currentUser.id, courseId, { completed: true, currentSlide: 1 });
+  toast('✅ Course marked as complete!');
+  const btn = document.querySelector('.viewer-bottombar .viewer-btn.accent');
+  if (btn) { btn.textContent = '✅ Completed'; btn.disabled = true; }
 }
 
 function viewerBodyHTML(course) {
@@ -2369,6 +2631,8 @@ function viewerBodyHTML(course) {
     setViewerProgress(currentUser.id, course.id, { completed: true });
     const embedId = (course.slidesUrl || '').match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1] || '';
     return `<div class="viewer-youtube"><iframe src="https://docs.google.com/presentation/d/${esc(embedId)}/embed?start=false&loop=false&delayms=3000" allowfullscreen></iframe></div>`;
+  } else if (course.contentType === 'scorm') {
+    return `<div class="viewer-youtube"><iframe src="${esc(course.scormUrl)}" allowfullscreen allow="fullscreen"></iframe></div>`;
   } else {
     return `<div class="viewer-no-content">
       <span class="big-icon">📚</span>
@@ -2472,6 +2736,7 @@ function setViewerProgress(uid, courseId, update) {
 }
 
 function leaveViewer() {
+  if (_pdfKeyHandler) { document.removeEventListener('keydown', _pdfKeyHandler); _pdfKeyHandler = null; }
   navigate(currentUser.isAdmin ? '/admin/courses' : '/learner/my-learning');
 }
 
@@ -2670,7 +2935,7 @@ function typeBadge(type) {
   return `<span class="badge badge-${(type||'free').toLowerCase()}">${esc(type||'Free')}</span>`;
 }
 function contentBadge(type) {
-  const map = { pdf: ['badge-pdf','PDF Slides'], youtube: ['badge-video','Video'], slides: ['badge-slides','Slides'], none: ['badge-none','Coming Soon'] };
+  const map = { pdf: ['badge-pdf','PDF Slides'], youtube: ['badge-video','Video'], slides: ['badge-slides','Slides'], scorm: ['badge-scorm','SCORM'], none: ['badge-none','Coming Soon'] };
   const [cls, label] = map[type] || map.none;
   return `<span class="badge ${cls}">${label}</span>`;
 }
@@ -2681,4 +2946,5 @@ function iconCourses() { return `<svg viewBox="0 0 24 24" fill="none" stroke="cu
 function iconUsers()   { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`; }
 function iconTrophy()  { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 9a6 6 0 0 0 12 0"/><line x1="12" y1="15" x2="12" y2="22"/><polyline points="9 22 15 22"/></svg>`; }
 function iconBook()     { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`; }
+function iconReport()   { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>`; }
 function iconSettings() { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`; }
