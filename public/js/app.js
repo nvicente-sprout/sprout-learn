@@ -2184,15 +2184,31 @@ function renderAdminReports() {
     .sort((a,b) => userCompletions(b.id) - userCompletions(a.id) || userAvgProgress(b.id) - userAvgProgress(a.id))
     .slice(0, 5);
 
-  const colorBar = (pct, color) =>
-    `<div style="background:#e8f5e9;border-radius:99px;height:8px;overflow:hidden;flex:1">
-      <div style="width:${pct}%;height:100%;background:${color};border-radius:99px;transition:width .6s"></div>
-    </div>`;
+  // Donut chart SVG helper
+  const r = 54, circ = +(2 * Math.PI * r).toFixed(1);
+  const donutChart = (pct, label, color) => {
+    const offset = +(circ * (1 - pct / 100)).toFixed(1);
+    return `<svg width="148" height="148" viewBox="0 0 148 148">
+      <circle cx="74" cy="74" r="${r}" fill="none" stroke="#e8f5e9" stroke-width="14"/>
+      <circle cx="74" cy="74" r="${r}" fill="none" stroke="${color}" stroke-width="14"
+        stroke-dasharray="${circ}" stroke-dashoffset="${offset}"
+        stroke-linecap="round" transform="rotate(-90 74 74)"
+        style="transition:stroke-dashoffset 1.1s cubic-bezier(.4,0,.2,1)"/>
+      <text x="74" y="69" text-anchor="middle" font-size="24" font-weight="800" fill="#1B3A1B">${pct}%</text>
+      <text x="74" y="88" text-anchor="middle" font-size="10" fill="#5a6a5a">${label}</text>
+    </svg>`;
+  };
+
+  // Horizontal bar for team chart
+  const maxTeamRate = Math.max(...teamRows.map(t => t.rate), 1);
+  const teamBarColor = r => r.rate >= 70 ? '#2e7d32' : r.rate >= 40 ? '#f59c00' : '#e53935';
 
   setMain(`
-    <div class="page-header fade-up">
-      <h1>Reports</h1>
-      <p>Learning analytics and team performance</p>
+    <div class="page-header fade-up" style="display:flex;align-items:center;flex-wrap:wrap;gap:.5rem">
+      <div>
+        <h1>Reports</h1>
+        <p>Learning analytics and team performance</p>
+      </div>
       <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="exportReportsCsv()">⬇ Export CSV</button>
     </div>
 
@@ -2206,9 +2222,8 @@ function renderAdminReports() {
         <div class="stat-value" data-target="${totalCompletions}">0</div>
       </div>
       <div class="stat-card" style="border-top:3px solid #3a7a3a;animation-delay:.14s">
-        <div class="stat-label">Overall Completion Rate</div>
-        <div class="stat-value" data-target="${completionRate}">0</div>
-        <div class="stat-suffix">%</div>
+        <div class="stat-label">Courses Available</div>
+        <div class="stat-value" data-target="${courses.length}">0</div>
       </div>
       <div class="stat-card" style="border-top:3px solid #4a9e4a;animation-delay:.21s">
         <div class="stat-label">Avg Assessment Score</div>
@@ -2217,21 +2232,38 @@ function renderAdminReports() {
       </div>
     </div>
 
-    <div class="reports-section">
-      <p class="section-heading">Team Performance</p>
-      <div class="reports-team-grid">
-        ${teamRows.length ? teamRows.map((r, i) => `
-          <div class="reports-team-card" style="animation-delay:${i*.07}s">
-            <div class="reports-team-header">
-              <div class="reports-team-name">${esc(r.team.name)}</div>
-              <div class="reports-team-rate ${r.rate >= 70 ? 'rate-high' : r.rate >= 40 ? 'rate-mid' : 'rate-low'}">${r.rate}%</div>
-            </div>
-            <div class="reports-team-meta">${r.members.length} member${r.members.length!==1?'s':''} · ${r.completed}/${r.assigned} completed</div>
-            <div style="display:flex;align-items:center;gap:.6rem;margin-top:.5rem">
-              ${colorBar(r.rate, r.rate >= 70 ? '#2e7d32' : r.rate >= 40 ? '#f57c00' : '#c62828')}
-              <span style="font-size:.78rem;color:var(--text-muted);white-space:nowrap">${r.teamAvgScore !== null ? `avg ${r.teamAvgScore}%` : 'no scores yet'}</span>
-            </div>
-          </div>`).join('') : '<p style="color:var(--text-muted);font-size:.9rem">No teams configured yet.</p>'}
+    <div class="reports-charts-row">
+      <!-- Donut charts -->
+      <div class="reports-chart-card fade-up" style="animation-delay:.1s">
+        <div class="reports-chart-title">Overall Completion Rate</div>
+        <div style="display:flex;gap:2rem;align-items:center;justify-content:center;flex-wrap:wrap;padding:.5rem 0">
+          <div style="text-align:center">
+            ${donutChart(completionRate, 'completion', '#2e7d32')}
+            <div style="font-size:.78rem;color:var(--text-muted);margin-top:.3rem">${totalCompletions} of ${totalAssigned} assigned</div>
+          </div>
+          <div style="text-align:center">
+            ${donutChart(avgScore, 'avg score', '#1565c0')}
+            <div style="font-size:.78rem;color:var(--text-muted);margin-top:.3rem">${scoredProgress.length} assessment${scoredProgress.length!==1?'s':''} taken</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Team bar chart -->
+      <div class="reports-chart-card fade-up" style="animation-delay:.18s;flex:1;min-width:260px">
+        <div class="reports-chart-title">Team Completion Rates</div>
+        ${teamRows.length ? `
+          <div class="reports-bar-chart">
+            ${teamRows.map((r,i) => `
+              <div class="reports-bar-row" style="animation-delay:${i*.07+.2}s">
+                <div class="reports-bar-label" title="${esc(r.team.name)}">${esc(r.team.name)}</div>
+                <div class="reports-bar-track">
+                  <div class="reports-bar-fill" style="width:${Math.round((r.rate/maxTeamRate)*100)}%;background:${teamBarColor(r)}"></div>
+                </div>
+                <div class="reports-bar-pct" style="color:${teamBarColor(r)}">${r.rate}%</div>
+              </div>`).join('')}
+          </div>
+          <div style="font-size:.76rem;color:var(--text-muted);margin-top:.75rem;text-align:right">${teamRows.length} team${teamRows.length!==1?'s':''} · ${totalLearners} learner${totalLearners!==1?'s':''}</div>
+        ` : '<p style="color:var(--text-muted);font-size:.88rem;padding:.5rem 0">No teams configured yet.</p>'}
       </div>
     </div>
 
@@ -2243,16 +2275,20 @@ function renderAdminReports() {
           const done = userCompletions(u.id);
           const avg  = userAvgProgress(u.id);
           const teamName = allTeams.find(t=>t.id===u.teamId)?.name || '—';
+          const maxDone  = userCompletions(topPerformers[0].id) || 1;
           return `<div class="reports-top-item" style="animation-delay:${i*.06}s">
             <div class="reports-top-rank">${medals[i]||`#${i+1}`}</div>
             ${avatarHTML(u, 38)}
             <div style="flex:1;min-width:0">
               <div style="font-weight:600;font-size:.9rem">${esc(u.name)}</div>
-              <div style="font-size:.77rem;color:var(--text-muted)">${esc(teamName)}</div>
+              <div style="font-size:.77rem;color:var(--text-muted);margin-bottom:.35rem">${esc(teamName)}</div>
+              <div style="background:#e8f5e9;border-radius:99px;height:5px;overflow:hidden">
+                <div style="width:${Math.round((done/maxDone)*100)}%;height:100%;background:#2e7d32;border-radius:99px;transition:width .8s ease"></div>
+              </div>
             </div>
-            <div style="text-align:right;font-size:.82rem">
-              <div style="font-weight:700;color:var(--primary)">${done} completed</div>
-              <div style="color:var(--text-muted)">${avg}% avg progress</div>
+            <div style="text-align:right;font-size:.82rem;margin-left:.75rem;flex-shrink:0">
+              <div style="font-weight:700;color:var(--primary)">${done} done</div>
+              <div style="color:var(--text-muted)">${avg}% progress</div>
             </div>
           </div>`;
         }).join('') : '<p style="color:var(--text-muted);font-size:.9rem">No activity yet.</p>'}
@@ -2271,8 +2307,9 @@ function renderAdminReports() {
             <th>Avg Score</th>
           </tr></thead>
           <tbody>
-            ${courseRows.length ? courseRows.map(r => `
-              <tr>
+            ${courseRows.length ? courseRows.map(r => {
+              const barColor = r.passRate >= 70 ? '#2e7d32' : r.passRate >= 40 ? '#f57c00' : r.passRate > 0 ? '#c62828' : '#ccc';
+              return `<tr>
                 <td>
                   <div style="display:flex;align-items:center;gap:.6rem">
                     ${r.c.coverUrl ? `<img src="${r.c.coverUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0" />` : `<div style="width:36px;height:36px;border-radius:6px;background:#e8f5e9;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">${CAT_EMOJI[r.c.category]||'📚'}</div>`}
@@ -2285,17 +2322,25 @@ function renderAdminReports() {
                 <td style="text-align:center;font-weight:600">${r.assigned}</td>
                 <td style="text-align:center;font-weight:600">${r.completed}</td>
                 <td>
-                  <div style="display:flex;align-items:center;gap:.5rem">
-                    ${colorBar(r.passRate, r.passRate >= 70 ? '#2e7d32' : r.passRate >= 40 ? '#f57c00' : r.passRate > 0 ? '#c62828' : '#ccc')}
-                    <span style="font-size:.8rem;font-weight:600;color:${r.passRate >= 70 ? '#2e7d32' : r.passRate >= 40 ? '#f57c00' : 'var(--text-muted)'};">${r.passRate}%</span>
+                  <div style="display:flex;align-items:center;gap:.5rem;min-width:120px">
+                    <div style="flex:1;background:#e8f5e9;border-radius:99px;height:7px;overflow:hidden">
+                      <div style="width:${r.passRate}%;height:100%;background:${barColor};border-radius:99px;transition:width .7s ease"></div>
+                    </div>
+                    <span style="font-size:.8rem;font-weight:700;color:${barColor};white-space:nowrap">${r.passRate}%</span>
                   </div>
                 </td>
                 <td style="text-align:center;color:var(--text-muted);font-size:.85rem">${r.cAvgScore !== null ? r.cAvgScore + '%' : '—'}</td>
-              </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:2rem">No courses yet.</td></tr>'}
+              </tr>`;
+            }).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:2rem">No courses yet.</td></tr>'}
           </tbody>
         </table>
       </div>
     </div>`);
+
+  // Animate stat counters
+  document.querySelectorAll('.stat-value[data-target]').forEach(el => {
+    animateCount(el, parseInt(el.dataset.target));
+  });
 }
 
 function exportReportsCsv() {
