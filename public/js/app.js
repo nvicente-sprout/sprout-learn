@@ -2660,7 +2660,7 @@ function renderLeaderboard(isAdmin, filterCourseId) {
             const isMe = u.id === currentUser?.id;
             return `<div class="lb-item ${i===0?'top1':''} ${isMe?'lb-item--me':''}" style="animation-delay:${i*0.07}s">
               <div class="lb-rank">${medals[i] || `#${i+1}`}</div>
-              <div class="user-avatar" style="background:${u.color};width:42px;height:42px">${initials(u.name)}</div>
+              ${avatarHTML(u, 42)}
               <div class="lb-info">
                 <div class="lb-name">${esc(u.name)}${isMe?'<span class="ld-you-badge" style="margin-left:.4rem">You</span>':''}</div>
                 <div class="lb-role">${u.level.icon} ${u.level.label} &nbsp;·&nbsp; ${esc(allTeams.find(t=>t.id===u.teamId)?.name||'')}</div>
