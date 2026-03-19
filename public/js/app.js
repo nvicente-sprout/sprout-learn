@@ -506,6 +506,17 @@ function subscribeRealtime() {
     })
     .subscribe();
 
+  // Realtime questions — learners always get the latest version
+  sb.channel('questions-live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, ({ new: r, eventType }) => {
+      if (eventType === 'DELETE') {
+        delete questions[r.course_id];
+      } else if (r?.course_id) {
+        questions[r.course_id] = r.questions_json;
+      }
+    })
+    .subscribe();
+
   // Realtime progress — keeps leaderboard/reports live without refresh
   sb.channel('progress-live')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'progress' }, ({ new: r, eventType }) => {
