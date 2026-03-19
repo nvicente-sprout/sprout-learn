@@ -1484,14 +1484,31 @@ img { max-width: 100%; }
   flex-wrap: wrap;
   margin-bottom: 1.25rem;
 }
-.ld-stats-inline {
-  display: flex !important;
-  flex-direction: column !important;
-  grid-template-columns: unset !important;
-  gap: .5rem !important;
+.ld-stat-pills {
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
   flex-shrink: 0;
-  width: 180px;
-  margin-bottom: 0 !important;
+}
+.ld-stat-pill {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .35rem .75rem;
+  font-size: .78rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  min-width: 140px;
+  box-shadow: var(--shadow);
+}
+.ld-stat-pill span {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--primary);
+  min-width: 2rem;
 }
 .ld-team-card {
   background: var(--card-bg);

@@ -3477,10 +3477,10 @@ function renderLearnerDashboard() {
     </div>
     ${userBadges(uid).length ? `<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem">${userBadges(uid).map(b=>`<span title="${b.desc}" style="background:#e8f5e9;color:#1B3A1B;padding:.25rem .65rem;border-radius:20px;font-size:.8rem;font-weight:700;cursor:default">${b.icon} ${b.label}</span>`).join('')}</div>` : ''}
     <div class="ld-top-row">
-      <div class="stats-grid ld-stats-inline">
-        ${statCard('Assigned', assigned.length, '', '#1B3A1B', 0)}
-        ${statCard('Completed', done, '', '#2d5a2d', 1)}
-        ${statCard('Avg Progress', avg, '%', '#3a7a3a', 2)}
+      <div class="ld-stat-pills">
+        <div class="ld-stat-pill"><span>${assigned.length}</span>Assigned</div>
+        <div class="ld-stat-pill"><span>${done}</span>Completed</div>
+        <div class="ld-stat-pill"><span>${avg}%</span>Avg Progress</div>
       </div>
       ${teamWidget}
     </div>
