@@ -318,7 +318,10 @@ async function handleAuthUser(authUser) {
     document.getElementById('app').innerHTML = `
       <div class="login-page">
         <div class="login-card" style="text-align:center">
-          <img src="assets/logos/sproutsol-logo-01.svg" style="height:36px;margin-bottom:1.5rem" />
+          <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:1.5rem;justify-content:center">
+            <img src="assets/logos/sproutsol-logo-01.svg" style="height:36px" />
+            <span class="brand-learn">Learn</span>
+          </div>
           <div style="font-size:2rem;margin-bottom:.5rem">🚫</div>
           <div style="font-weight:700;margin-bottom:.5rem">Access Denied</div>
           <div style="color:var(--text-muted);font-size:.9rem;margin-bottom:1.5rem">Only @sprout.ph accounts are allowed.</div>
@@ -438,7 +441,8 @@ function renderLogin() {
     <div class="login-page">
       <div class="login-card" style="text-align:center">
         <div class="login-logo">
-          <img src="assets/logos/sproutsol-logo-01.svg" alt="Sprout Solutions" />
+          <img src="assets/logos/sproutsol-logo-01.svg" alt="Sprout" />
+          <span class="brand-learn" style="background:var(--primary);color:var(--accent)">Learn</span>
         </div>
         <div class="login-heading">Welcome to Sprout Learn</div>
         <div class="login-sub">Sign in with your Sprout work account to continue</div>
@@ -455,7 +459,10 @@ function renderCompleteProfile() {
   document.getElementById('app').innerHTML = `
     <div class="login-page">
       <div class="login-card" style="max-width:420px;text-align:left">
-        <img src="assets/logos/sproutsol-logo-01.svg" style="height:30px;margin-bottom:1.5rem;display:block" />
+        <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:1.5rem">
+          <img src="assets/logos/sproutsol-logo-01.svg" style="height:30px;display:block" />
+          <span class="brand-learn" style="background:var(--primary);color:var(--accent)">Learn</span>
+        </div>
         <h2 style="font-size:1.2rem;font-weight:800;margin-bottom:.25rem">Complete your profile</h2>
         <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1.5rem">One more step before you get started</p>
         <div class="form-group">
@@ -528,7 +535,8 @@ function renderLayout() {
       <header class="app-header">
         <div class="header-inner">
           <a class="header-brand" href="#${navLinks[0].href}">
-            <img src="assets/logos/sproutsol-logo-white.svg" alt="Sprout Solutions" class="header-brand-logo" />
+            <img src="assets/logos/sproutsol-logo-white.svg" alt="Sprout" class="header-brand-logo" />
+            <span class="brand-learn">Learn</span>
           </a>
           <nav class="header-nav">${tabs}</nav>
           <div class="header-user">
@@ -1531,8 +1539,19 @@ function toggleAssignee(userId, courseId) {
   }
   const item = document.getElementById(`assignee-${userId}`);
   const check = item?.querySelector('input[type="checkbox"]');
-  if (item) item.classList.toggle('selected', isAssigned(userId, courseId));
-  if (check) check.checked = isAssigned(userId, courseId);
+  const assigned = isAssigned(userId, courseId);
+  if (item) item.classList.toggle('selected', assigned);
+  if (check) check.checked = assigned;
+  if (item) {
+    const avatar = item.querySelector('.user-avatar');
+    if (avatar) { avatar.classList.add('popping'); setTimeout(() => avatar.classList.remove('popping'), 350); }
+    const p = document.createElement('span');
+    p.className = 'assign-particle';
+    p.textContent = assigned ? '✓' : '✕';
+    p.style.color = assigned ? 'var(--accent-dark)' : '#e53935';
+    item.appendChild(p);
+    setTimeout(() => p.remove(), 480);
+  }
 }
 
 function toggleAssignAll(courseId) {
