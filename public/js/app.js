@@ -212,7 +212,7 @@ function userAvgProgress(userId) {
   }, 0);
   return Math.round(total / assigned.length);
 }
-function learners() { return allUsers.filter(u => !u.isAdmin); }
+function learners() { return allUsers; }
 
 // ─── Gamification ─────────────────────────────────────────────────────────────
 const LEVELS = [
