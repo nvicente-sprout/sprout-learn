@@ -390,7 +390,11 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 
 function navigate(route) {
-  window.location.hash = route;
+  if (window.location.hash === '#' + route) {
+    handleRoute();
+  } else {
+    window.location.hash = route;
+  }
 }
 
 function handleRoute() {
