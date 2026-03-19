@@ -1572,7 +1572,8 @@ function handleExcelFile(input, courseId) {
         const rowNum = i + 2; // 1-indexed, row 1 = headers
         const type = String(row.type || '').trim().toLowerCase();
         const question = String(row.question || '').trim();
-        const correct = String(row.correct || '').trim().toUpperCase();
+        const correctRaw = row.correct;
+        const correct = correctRaw === true ? 'TRUE' : correctRaw === false ? 'FALSE' : String(correctRaw || '').trim().toUpperCase();
 
         if (!type) { errors.push(`Row ${rowNum}: missing type`); return; }
         if (!question) { errors.push(`Row ${rowNum}: missing question`); return; }
