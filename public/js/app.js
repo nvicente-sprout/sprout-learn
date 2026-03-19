@@ -761,11 +761,149 @@ function renderLayout() {
         <nav class="mobile-nav" id="mobile-nav">${tabs}</nav>
       </header>
       <main class="main-content" id="main-content"></main>
+    </div>
+    <div class="side-panel-overlay" id="side-panel-overlay" onclick="closeSidePanel()" style="display:none"></div>
+    <div class="side-panel" id="side-panel">
+      <div class="side-panel-inner" id="side-panel-inner"></div>
     </div>`;
 }
 
 function toggleMobileMenu() {
   document.getElementById('mobile-nav')?.classList.toggle('open');
+}
+
+function openSidePanel(html) {
+  const panel   = document.getElementById('side-panel');
+  const overlay = document.getElementById('side-panel-overlay');
+  const inner   = document.getElementById('side-panel-inner');
+  if (!panel || !inner) return;
+  inner.innerHTML = html;
+  overlay.style.display = '';
+  requestAnimationFrame(() => panel.classList.add('open'));
+}
+
+function closeSidePanel() {
+  const panel   = document.getElementById('side-panel');
+  const overlay = document.getElementById('side-panel-overlay');
+  if (!panel) return;
+  panel.classList.remove('open');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function openReportsUserPanel(userId) {
+  const u = getUser(userId);
+  if (!u) return;
+  const teamName     = allTeams.find(t => t.id === u.teamId)?.name || '—';
+  const assignedCids = getUserAssignments(userId);
+  const completed    = assignedCids.filter(cid => getProgress(userId, cid).completed).length;
+  const scores       = assignedCids.map(cid => getProgress(userId, cid)).filter(p => p.score !== null && p.score !== undefined).map(p => p.score);
+  const avgScore     = scores.length ? Math.round(scores.reduce((a,b) => a+b,0) / scores.length) : null;
+
+  const rows = assignedCids.map(cid => {
+    const c = getCourse(cid);
+    const p = getProgress(userId, cid);
+    if (!c) return '';
+    const statusColor = p.completed ? '#2e7d32' : '#f57c00';
+    const statusLabel = p.completed ? '✅ Completed' : p.currentSlide > 0 ? '🕐 In Progress' : '○ Not Started';
+    const pct = p.completed ? 100 : (c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0);
+    return `<div class="sp-course-row">
+      ${c.coverUrl ? `<img src="${c.coverUrl}" class="sp-course-thumb"/>` : `<div class="sp-course-thumb sp-course-thumb--placeholder">${CAT_EMOJI[c.category]||'📚'}</div>`}
+      <div style="flex:1;min-width:0">
+        <div class="sp-course-title">${esc(c.title)}</div>
+        <div style="font-size:.76rem;color:var(--text-muted);margin-bottom:.3rem">${esc(c.category)}</div>
+        <div style="display:flex;align-items:center;gap:.5rem">
+          <div style="flex:1;background:#e8f5e9;border-radius:99px;height:6px;overflow:hidden">
+            <div style="width:${pct}%;height:100%;background:${p.completed?'#2e7d32':'#4a9e4a'};border-radius:99px"></div>
+          </div>
+          <span style="font-size:.74rem;color:var(--text-muted);white-space:nowrap">${pct}%</span>
+        </div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:.78rem;font-weight:600;color:${statusColor}">${statusLabel}</div>
+        ${p.score !== null && p.score !== undefined ? `<div style="font-size:.82rem;font-weight:800;color:var(--primary);margin-top:.2rem">${p.score}%</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  openSidePanel(`
+    <div class="sp-header">
+      <div style="display:flex;align-items:center;gap:.75rem;flex:1;min-width:0">
+        ${avatarHTML(u, 44)}
+        <div style="min-width:0">
+          <div class="sp-title">${esc(u.name)}</div>
+          <div class="sp-subtitle">${esc(teamName)}</div>
+        </div>
+      </div>
+      <button class="sp-close" onclick="closeSidePanel()">✕</button>
+    </div>
+    <div class="sp-stats">
+      <div class="sp-stat"><span>${assignedCids.length}</span>Assigned</div>
+      <div class="sp-stat"><span>${completed}</span>Completed</div>
+      <div class="sp-stat"><span>${avgScore !== null ? avgScore+'%' : '—'}</span>Avg Score</div>
+      <div class="sp-stat"><span>${userXP(userId)}</span>XP</div>
+    </div>
+    <div class="sp-section-label">Assigned Courses</div>
+    <div class="sp-list">
+      ${rows || '<div style="color:var(--text-muted);font-size:.88rem;padding:1rem 0">No courses assigned yet.</div>'}
+    </div>`);
+}
+
+function openReportsCoursePanel(courseId) {
+  const c = getCourse(courseId);
+  if (!c) return;
+  const assignedUsers  = learners().filter(u => isAssigned(u.id, courseId));
+  const completedUsers = assignedUsers.filter(u => getProgress(u.id, courseId).completed);
+  const scores         = assignedUsers.map(u => getProgress(u.id, courseId)).filter(p => p.score !== null && p.score !== undefined).map(p => p.score);
+  const avgScore       = scores.length ? Math.round(scores.reduce((a,b) => a+b,0) / scores.length) : null;
+  const passRate       = assignedUsers.length ? Math.round((completedUsers.length / assignedUsers.length) * 100) : 0;
+  const barColor       = passRate >= 70 ? '#2e7d32' : passRate >= 40 ? '#f57c00' : '#c62828';
+
+  const rows = assignedUsers.map(u => {
+    const p        = getProgress(u.id, courseId);
+    const teamName = allTeams.find(t => t.id === u.teamId)?.name || '—';
+    const statusColor = p.completed ? '#2e7d32' : '#f57c00';
+    const statusLabel = p.completed ? '✅ Completed' : p.currentSlide > 0 ? '🕐 In Progress' : '○ Not Started';
+    const pct = p.completed ? 100 : (c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0);
+    return `<div class="sp-course-row">
+      ${avatarHTML(u, 36)}
+      <div style="flex:1;min-width:0">
+        <div class="sp-course-title">${esc(u.name)}</div>
+        <div style="font-size:.76rem;color:var(--text-muted);margin-bottom:.3rem">${esc(teamName)}</div>
+        <div style="display:flex;align-items:center;gap:.5rem">
+          <div style="flex:1;background:#e8f5e9;border-radius:99px;height:6px;overflow:hidden">
+            <div style="width:${pct}%;height:100%;background:${p.completed?'#2e7d32':'#4a9e4a'};border-radius:99px"></div>
+          </div>
+          <span style="font-size:.74rem;color:var(--text-muted);white-space:nowrap">${pct}%</span>
+        </div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:.78rem;font-weight:600;color:${statusColor}">${statusLabel}</div>
+        ${p.score !== null && p.score !== undefined ? `<div style="font-size:.82rem;font-weight:800;color:var(--primary);margin-top:.2rem">${p.score}%</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  openSidePanel(`
+    <div class="sp-header">
+      <div style="display:flex;align-items:center;gap:.75rem;flex:1;min-width:0">
+        ${c.coverUrl ? `<img src="${c.coverUrl}" style="width:44px;height:44px;object-fit:cover;border-radius:8px;flex-shrink:0"/>` : `<div style="width:44px;height:44px;border-radius:8px;background:#e8f5e9;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0">${CAT_EMOJI[c.category]||'📚'}</div>`}
+        <div style="min-width:0">
+          <div class="sp-title">${esc(c.title)}</div>
+          <div class="sp-subtitle">${esc(c.category)}</div>
+        </div>
+      </div>
+      <button class="sp-close" onclick="closeSidePanel()">✕</button>
+    </div>
+    <div class="sp-stats">
+      <div class="sp-stat"><span>${assignedUsers.length}</span>Assigned</div>
+      <div class="sp-stat"><span>${completedUsers.length}</span>Completed</div>
+      <div class="sp-stat"><span style="color:${barColor}">${passRate}%</span>Pass Rate</div>
+      <div class="sp-stat"><span>${avgScore !== null ? avgScore+'%' : '—'}</span>Avg Score</div>
+    </div>
+    <div class="sp-section-label">Assigned People</div>
+    <div class="sp-list">
+      ${rows || '<div style="color:var(--text-muted);font-size:.88rem;padding:1rem 0">No one assigned yet.</div>'}
+    </div>`);
 }
 
 document.addEventListener('click', (e) => {
