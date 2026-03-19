@@ -3189,10 +3189,8 @@ function viewerBodyHTML(course) {
   if (course.contentType === 'pdf') {
     return `<canvas id="pdf-canvas"></canvas>`;
   } else if (course.contentType === 'youtube') {
-    setViewerProgress(currentUser.id, course.id, { completed: true });
     return `<div class="viewer-youtube"><iframe src="https://www.youtube.com/embed/${esc(course.youtubeId)}?autoplay=0&rel=0" allowfullscreen></iframe></div>`;
   } else if (course.contentType === 'slides') {
-    setViewerProgress(currentUser.id, course.id, { completed: true });
     const embedId = (course.slidesUrl || '').match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1] || '';
     return `<div class="viewer-youtube"><iframe src="https://docs.google.com/presentation/d/${esc(embedId)}/embed?start=false&loop=false&delayms=3000" allowfullscreen></iframe></div>`;
   } else if (course.contentType === 'scorm') {
