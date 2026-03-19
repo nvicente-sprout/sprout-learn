@@ -3103,12 +3103,13 @@ async function loadFlappyScores() {
 
 async function saveFlappyScore(score) {
   try {
-    await sb.from('flappy_scores').upsert(
+    const { error } = await sb.from('flappy_scores').upsert(
       { user_id: currentUser.id, high_score: score, updated_at: new Date().toISOString() },
       { onConflict: 'user_id' }
     );
+    if (error) { console.error('flappy save error:', error); return; }
     await loadFlappyScores();
-  } catch(e) {}
+  } catch(e) { console.error('flappy save exception:', e); }
 }
 
 function renderFlappyLeaderboard() {
