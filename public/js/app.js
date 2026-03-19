@@ -1810,33 +1810,59 @@ function showAssignModal(courseId) {
     </div>`);
 }
 
-function toggleAssignee(userId, courseId) {
+async function toggleAssignee(userId, courseId) {
+  const item = document.getElementById(`assignee-${userId}`);
+  if (!item || item.dataset.saving === 'true') return; // prevent double-click
+  item.dataset.saving = 'true';
+
+  // Show saving spinner on the item
+  const savingBadge = document.createElement('span');
+  savingBadge.className = 'assignee-saving';
+  savingBadge.innerHTML = '<span class="assignee-spinner"></span>';
+  item.appendChild(savingBadge);
+  item.style.pointerEvents = 'none';
+  item.style.opacity = '.7';
+
   if (!assignments[userId]) assignments[userId] = [];
   const idx = assignments[userId].indexOf(courseId);
-  if (idx > -1) {
+  const willAssign = idx === -1;
+
+  let error;
+  if (!willAssign) {
     assignments[userId].splice(idx, 1);
-    sb.from('assignments').delete().eq('user_id', userId).eq('course_id', courseId)
-      .then(({ error }) => { if (error) { console.error('Assignment delete:', error); toast('Failed to unassign: ' + error.message, 'error'); } });
+    ({ error } = await sb.from('assignments').delete().eq('user_id', userId).eq('course_id', courseId));
+    if (error) assignments[userId].push(courseId); // rollback
   } else {
     assignments[userId].push(courseId);
-    sb.from('assignments').upsert({ user_id: userId, course_id: courseId })
-      .then(({ error }) => { if (error) { console.error('Assignment insert:', error); toast('Failed to assign: ' + error.message, 'error'); } });
+    ({ error } = await sb.from('assignments').upsert({ user_id: userId, course_id: courseId }));
+    if (error) assignments[userId].splice(assignments[userId].indexOf(courseId), 1); // rollback
   }
-  const item = document.getElementById(`assignee-${userId}`);
-  const check = item?.querySelector('input[type="checkbox"]');
+
+  // Remove spinner
+  savingBadge.remove();
+  item.style.pointerEvents = '';
+  item.style.opacity = '';
+  item.dataset.saving = 'false';
+
+  if (error) {
+    toast('Failed to ' + (willAssign ? 'assign' : 'unassign') + ': ' + error.message, 'error');
+    return;
+  }
+
   const assigned = isAssigned(userId, courseId);
-  if (item) item.classList.toggle('selected', assigned);
+  const check = item.querySelector('input[type="checkbox"]');
+  item.classList.toggle('selected', assigned);
   if (check) check.checked = assigned;
-  if (item) {
-    const avatar = item.querySelector('.user-avatar');
-    if (avatar) { avatar.classList.add('popping'); setTimeout(() => avatar.classList.remove('popping'), 350); }
-    const p = document.createElement('span');
-    p.className = 'assign-particle';
-    p.textContent = assigned ? '✓' : '✕';
-    p.style.color = assigned ? 'var(--accent-dark)' : '#e53935';
-    item.appendChild(p);
-    setTimeout(() => p.remove(), 480);
-  }
+
+  // Pop + particle animation
+  const avatar = item.querySelector('.user-avatar');
+  if (avatar) { avatar.classList.add('popping'); setTimeout(() => avatar.classList.remove('popping'), 350); }
+  const p = document.createElement('span');
+  p.className = 'assign-particle';
+  p.textContent = assigned ? '✓' : '✕';
+  p.style.color = assigned ? 'var(--accent-dark)' : '#e53935';
+  item.appendChild(p);
+  setTimeout(() => p.remove(), 480);
 }
 
 function toggleAssignAll(courseId) {

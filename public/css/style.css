@@ -1058,6 +1058,23 @@ img { max-width: 100%; }
   flex-shrink: 0;
 }
 
+/* ─── Assignee Saving Spinner ─────────────────────────────────────────────── */
+.assignee-saving {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+.assignee-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent-dark);
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* ─── Excel Upload ────────────────────────────────────────────────────────── */
 .excel-upload-hint {
   background: #f0faf0;
