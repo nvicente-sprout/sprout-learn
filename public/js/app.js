@@ -333,7 +333,7 @@ async function handleAuthUser(authUser) {
   if (!existingUser) {
     const name = authUser.user_metadata?.full_name || email.split('@')[0];
     await sb.from('users').insert({
-      id: authUser.id, email, name, role: 'Alliance Manager', is_admin: false,
+      id: authUser.id, email, name, is_admin: false,
     });
   }
 
@@ -465,10 +465,6 @@ function renderCompleteProfile() {
         <div class="form-group">
           <label class="form-label">Email</label>
           <input class="form-input" value="${esc(currentUser.email)}" disabled style="opacity:.55;cursor:not-allowed" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Job Title</label>
-          <input class="form-input" value="${esc(currentUser.role || '')}" disabled style="opacity:.55;cursor:not-allowed" />
         </div>
         <div class="form-group">
           <label class="form-label">Team *</label>
@@ -612,7 +608,7 @@ function lbItem(u, i) {
   return `<div class="lb-item ${i===0?'top1':''}" style="animation-delay:${i*0.07}s">
     <div class="lb-rank">${medals[i] || `#${i+1}`}</div>
     <div class="user-avatar" style="background:${u.color};width:38px;height:38px;font-size:.8rem">${initials(u.name)}</div>
-    <div class="lb-info"><div class="lb-name">${esc(u.name)}</div><div class="lb-role">${esc(u.role)}</div></div>
+    <div class="lb-info"><div class="lb-name">${esc(u.name)}</div><div class="lb-role">${esc(allTeams.find(t=>t.id===u.teamId)?.name||'')}</div></div>
     <div class="lb-stats"><strong>${done}</strong> completions &nbsp;·&nbsp; ${avg}% avg</div>
   </div>`;
 }
@@ -1511,7 +1507,7 @@ function showAssignModal(courseId) {
             <div class="assignee-item ${isAssigned(u.id,courseId)?'selected':''}" id="assignee-${u.id}" onclick="toggleAssignee('${u.id}','${courseId}')">
               <input type="checkbox" class="assignee-check" ${isAssigned(u.id,courseId)?'checked':''} />
               <div class="user-avatar" style="background:${u.color};width:32px;height:32px;font-size:.72rem">${initials(u.name)}</div>
-              <div><div style="font-weight:600;font-size:.88rem">${esc(u.name)}</div><div style="font-size:.75rem;color:var(--text-muted)">${esc(u.role)}</div></div>
+              <div><div style="font-weight:600;font-size:.88rem">${esc(u.name)}</div><div style="font-size:.75rem;color:var(--text-muted)">${esc(allTeams.find(t=>t.id===u.teamId)?.name||'')}</div></div>
             </div>`).join('')}
         </div>
       </div>
@@ -1578,7 +1574,7 @@ function renderAdminTeam() {
               <div class="user-avatar" style="background:${u.color};width:44px;height:44px">${initials(u.name)}</div>
               <div class="member-info">
                 <div class="member-name">${esc(u.name)}</div>
-                <div class="member-role">${esc(u.role)}${u.teamId ? ` · ${esc(allTeams.find(t=>t.id===u.teamId)?.name||'')}` : ''}</div>
+                <div class="member-role">${esc(allTeams.find(t=>t.id===u.teamId)?.name||'No team')}</div>
                 <div style="font-size:.72rem;color:var(--text-muted)">${esc(u.email)}</div>
               </div>
               <span class="badge" style="background:${badgeColor};color:white">${done}/${assigned}</span>
@@ -1604,7 +1600,7 @@ function renderAdminTeam() {
             <div class="user-avatar" style="background:${u.color};width:44px;height:44px">${initials(u.name)}</div>
             <div class="member-info">
               <div class="member-name">${esc(u.name)}</div>
-              <div class="member-role">${esc(u.role)}</div>
+              <div class="member-role">${esc(allTeams.find(t=>t.id===u.teamId)?.name||'')}</div>
               <div style="font-size:.72rem;color:var(--text-muted)">${esc(u.email)}</div>
             </div>
             <span class="badge badge-done">Admin</span>
@@ -1637,15 +1633,11 @@ function editUserRole(userId) {
   if (!u) return;
   showModal(`
     <div class="modal" onclick="event.stopPropagation()">
-      <div class="gmodal-header"><h2>Edit Role</h2><button class="gmodal-close" onclick="closeModal()">✕</button></div>
+      <div class="gmodal-header"><h2>Edit Name</h2><button class="gmodal-close" onclick="closeModal()">✕</button></div>
       <div class="gmodal-body">
         <div class="form-group">
           <label class="form-label">Name</label>
           <input id="edit-name" class="form-input" value="${esc(u.name)}" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Job Title</label>
-          <input id="edit-role" class="form-input" value="${esc(u.role)}" />
         </div>
       </div>
       <div class="gmodal-footer">
@@ -1657,11 +1649,10 @@ function editUserRole(userId) {
 
 async function saveUserRole(userId) {
   const name = document.getElementById('edit-name')?.value.trim();
-  const role = document.getElementById('edit-role')?.value.trim();
   if (!name) { toast('Name required', 'error'); return; }
-  await sb.from('users').update({ name, role }).eq('id', userId);
+  await sb.from('users').update({ name }).eq('id', userId);
   const u = getUser(userId);
-  if (u) { u.name = name; u.role = role; }
+  if (u) { u.name = name; }
   closeModal();
   toast('Saved!');
   renderAdminTeam();
@@ -1796,10 +1787,6 @@ function showEditUserModal(userId) {
           <input id="eu-name" class="form-input" value="${esc(u.name)}" />
         </div>
         <div class="form-group">
-          <label class="form-label">Job Title</label>
-          <input id="eu-role" class="form-input" value="${esc(u.role)}" />
-        </div>
-        <div class="form-group">
           <label class="form-label">Team</label>
           <select id="eu-team" class="form-select">
             <option value="">— No team —</option>
@@ -1816,13 +1803,12 @@ function showEditUserModal(userId) {
 
 async function saveUserEdit(userId) {
   const name   = document.getElementById('eu-name')?.value.trim();
-  const role   = document.getElementById('eu-role')?.value.trim();
   const teamId = document.getElementById('eu-team')?.value || null;
   if (!name) { toast('Name required', 'error'); return; }
-  const { error } = await sb.from('users').update({ name, role, team_id: teamId }).eq('id', userId);
+  const { error } = await sb.from('users').update({ name, team_id: teamId }).eq('id', userId);
   if (error) { toast('Failed: ' + error.message, 'error'); return; }
   const u = getUser(userId);
-  if (u) { u.name = name; u.role = role; u.teamId = teamId; }
+  if (u) { u.name = name; u.teamId = teamId; }
   closeModal();
   toast('Saved!');
   renderAdminSettings();
@@ -1880,7 +1866,7 @@ function renderLeaderboard(isAdmin, filterCourseId) {
               return `<div class="lb-item ${i===0&&u.score!==null?'top1':''}" style="animation-delay:${i*0.07}s">
                 <div class="lb-rank">${u.score !== null ? (medals[i] || `#${i+1}`) : '—'}</div>
                 <div class="user-avatar" style="background:${u.color};width:42px;height:42px">${initials(u.name)}</div>
-                <div class="lb-info"><div class="lb-name">${esc(u.name)}</div><div class="lb-role">${esc(u.role)}</div></div>
+                <div class="lb-info"><div class="lb-name">${esc(u.name)}</div><div class="lb-role">${esc(allTeams.find(t=>t.id===u.teamId)?.name||'')}</div></div>
                 <div>${statusBadge}</div>
                 <div class="lb-stats"><strong>${scoreDisplay}</strong> score</div>
               </div>`;
@@ -1902,7 +1888,7 @@ function renderLeaderboard(isAdmin, filterCourseId) {
           <div class="user-avatar" style="background:${u.color};width:42px;height:42px">${initials(u.name)}</div>
           <div class="lb-info">
             <div class="lb-name">${esc(u.name)}</div>
-            <div class="lb-role">${u.level.icon} ${u.level.label} &nbsp;·&nbsp; ${esc(u.role)}</div>
+            <div class="lb-role">${u.level.icon} ${u.level.label} &nbsp;·&nbsp; ${esc(allTeams.find(t=>t.id===u.teamId)?.name||'')}</div>
           </div>
           <div style="display:flex;gap:.3rem;align-items:center;flex-wrap:wrap">${badgeIcons}</div>
           <div style="text-align:right;min-width:90px">
