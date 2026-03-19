@@ -1943,7 +1943,7 @@ function renderLearnerDashboard() {
 
   const continueList = assigned
     .filter(cid => !getProgress(uid, cid).completed)
-    .slice(0, 4);
+    .slice(0, 6);
 
   setMain(`
     <div class="page-header fade-up">
@@ -1958,22 +1958,29 @@ function renderLearnerDashboard() {
     </div>
     <p class="section-heading">Continue Learning</p>
     ${continueList.length ? `
-      <div class="continue-list">
-        ${continueList.map(cid => {
+      <div class="cl-grid">
+        ${continueList.map((cid, i) => {
           const c = getCourse(cid); if (!c) return '';
           const p = getProgress(uid, cid);
           const pct = c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0;
-          return `<div class="continue-item">
-            <div style="font-size:1.5rem">${CAT_EMOJI[c.category]||'📚'}</div>
-            <div class="continue-item-info">
-              <div class="continue-item-title">${esc(c.title)}</div>
-              <div class="continue-item-meta">${esc(c.category)} · ${pct}% complete</div>
+          const cover = c.coverUrl
+            ? `<img src="${c.coverUrl}" alt="" />`
+            : `<div class="cl-cover-placeholder">
+                <img src="assets/logos/logo-icon-green.svg" style="width:34px;height:34px;opacity:.9" alt="" />
+                <span style="font-size:.72rem;font-weight:700;color:rgba(255,255,255,.85);text-align:center;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:90%">${esc(c.title)}</span>
+              </div>`;
+          return `<a href="#/course/${c.id}" class="cl-card" style="animation-delay:${i*0.07}s">
+            <div class="cl-card-cover">
+              ${cover}
+              ${pct > 0 ? `<span class="cl-pct">${pct}%</span>` : ''}
+              <div class="cl-progress-track"><div class="cl-progress-fill" style="width:${pct}%"></div></div>
             </div>
-            <div class="continue-item-progress">
-              <div class="progress-bar-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>
+            <div class="cl-card-body">
+              <div class="cl-card-title">${esc(c.title)}</div>
+              <div class="cl-card-meta">${CAT_EMOJI[c.category]||'📚'} ${esc(c.category)}</div>
+              <div class="cl-card-cta">${p.currentSlide > 0 ? '▶ Continue' : '▶ Start'}</div>
             </div>
-            <a href="#/course/${c.id}" class="btn btn-primary btn-sm">${p.currentSlide > 0 ? 'Continue' : 'Start'}</a>
-          </div>`;
+          </a>`;
         }).join('')}
       </div>` : `
       <div class="empty-state" style="padding:2rem">
@@ -1983,18 +1990,24 @@ function renderLearnerDashboard() {
         <a href="#/learner/library" class="btn btn-primary" style="margin-top:1rem">Browse Library</a>
       </div>`}
     <p class="section-heading">Completed Courses</p>
-    ${done > 0 ? `<div class="course-grid">
-      ${assigned.filter(cid => getProgress(uid, cid).completed).map(cid => {
+    ${done > 0 ? `<div class="completed-grid">
+      ${assigned.filter(cid => getProgress(uid, cid).completed).map((cid, i) => {
         const c = getCourse(cid); if (!c) return '';
-        return `<div class="course-card">
-          ${courseCoverHTML(c)}
-          <div class="course-card-body">
-            <div class="course-card-badges">${typeBadge(c.type)} <span class="badge badge-done">✓ Done</span></div>
-            <div class="course-card-title">${esc(c.title)}</div>
-            <div class="course-card-meta">${CAT_EMOJI[c.category]||'📚'} ${esc(c.category)}</div>
-            <div class="course-card-actions">
+        const cover = c.coverUrl
+          ? `<img src="${c.coverUrl}" alt="" />`
+          : `<div style="width:100%;height:100%;background:linear-gradient(135deg,#1B3A1B 0%,#2d6a2d 100%);display:flex;align-items:center;justify-content:center">
+              <img src="assets/logos/logo-icon-green.svg" style="width:24px;height:24px;opacity:.8" alt="" />
+            </div>`;
+        return `<div class="completed-card" style="animation-delay:${i*0.05}s">
+          <div class="completed-card-cover">
+            ${cover}
+            <span class="completed-done-badge">✓ Done</span>
+          </div>
+          <div class="completed-card-body">
+            <div class="completed-card-title">${esc(c.title)}</div>
+            <div class="completed-card-actions">
               <a href="#/course/${c.id}" class="btn btn-outline btn-sm">Review</a>
-              <button class="btn btn-outline btn-sm" onclick="showCertificate('${c.id}')">🏆 Certificate</button>
+              <button class="btn btn-outline btn-sm" onclick="event.preventDefault();showCertificate('${c.id}')">🏆</button>
             </div>
           </div>
         </div>`;
