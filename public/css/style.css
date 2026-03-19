@@ -1482,11 +1482,15 @@ img { max-width: 100%; }
   align-items: flex-start;
   gap: 1rem;
   flex-wrap: wrap;
-  margin-bottom: .25rem;
+  margin-bottom: 1.25rem;
 }
 .ld-stats-inline {
-  flex: 1;
-  min-width: 200px;
+  display: flex !important;
+  flex-direction: column !important;
+  grid-template-columns: unset !important;
+  gap: .5rem !important;
+  flex-shrink: 0;
+  width: 180px;
   margin-bottom: 0 !important;
 }
 .ld-team-card {
