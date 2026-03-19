@@ -341,12 +341,16 @@ async function handleAuthUser(authUser) {
   }
 
   // Insert new user only if they don't exist yet (never overwrite existing record)
-  const { data: existingUser } = await sb.from('users').select('id').eq('id', authUser.id).maybeSingle();
+  const googleAvatar = authUser.user_metadata?.avatar_url || authUser.user_metadata?.picture || null;
+  const { data: existingUser } = await sb.from('users').select('id, avatar_url').eq('id', authUser.id).maybeSingle();
   if (!existingUser) {
     const name = authUser.user_metadata?.full_name || email.split('@')[0];
     await sb.from('users').insert({
-      id: authUser.id, email, name, is_admin: false,
+      id: authUser.id, email, name, is_admin: false, avatar_url: googleAvatar,
     });
+  } else if (!existingUser.avatar_url && googleAvatar) {
+    // Backfill Google photo for existing users who don't have one yet
+    await sb.from('users').update({ avatar_url: googleAvatar }).eq('id', authUser.id);
   }
 
   await loadData();
