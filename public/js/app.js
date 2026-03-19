@@ -375,6 +375,26 @@ async function logout() {
   navigate('/login');
 }
 
+// ─── Realtime ─────────────────────────────────────────────────────────────────
+function subscribeRealtime() {
+  sb.channel('assignments-live')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'assignments' }, ({ new: r }) => {
+      if (!assignments[r.user_id]) assignments[r.user_id] = [];
+      if (!assignments[r.user_id].includes(r.course_id)) assignments[r.user_id].push(r.course_id);
+      const hash = window.location.hash.slice(1);
+      if (currentUser?.id === r.user_id && hash === '/learner/dashboard') renderLearnerDashboard();
+      if (hash === '/admin/team') renderAdminTeam();
+    })
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'assignments' }, ({ old: r }) => {
+      if (assignments[r.user_id])
+        assignments[r.user_id] = assignments[r.user_id].filter(cid => cid !== r.course_id);
+      const hash = window.location.hash.slice(1);
+      if (currentUser?.id === r.user_id && hash === '/learner/dashboard') renderLearnerDashboard();
+      if (hash === '/admin/team') renderAdminTeam();
+    })
+    .subscribe();
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 window.addEventListener('hashchange', handleRoute);
 window.addEventListener('DOMContentLoaded', async () => {
@@ -386,6 +406,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     await loadData();
   }
   hideLoader();
+  subscribeRealtime();
   if (!window.location.hash || window.location.hash === '#/') {
     window.location.hash = currentUser ? (currentUser.isAdmin ? '#/admin/dashboard' : '#/learner/dashboard') : '#/login';
   }
@@ -1589,51 +1610,153 @@ function toggleAssignAll(courseId) {
 }
 
 // ─── Admin Team Progress ──────────────────────────────────────────────────────
-function renderAdminTeam() {
+function renderAdminTeam(filterTeam = '', filterCourse = '', searchQ = '', sortBy = 'name') {
   setTitle('Team Progress');
-  const allMembers = allUsers.filter(u => u.id !== currentUser.id);
+
+  // Filter + sort learners
+  let members = learners();
+  if (searchQ) members = members.filter(u =>
+    u.name.toLowerCase().includes(searchQ.toLowerCase()) ||
+    u.email.toLowerCase().includes(searchQ.toLowerCase()));
+  if (filterTeam) members = members.filter(u => u.teamId === filterTeam);
+  members = [...members].sort((a, b) => {
+    if (sortBy === 'progress')    return userAvgProgress(b.id) - userAvgProgress(a.id);
+    if (sortBy === 'completions') return userCompletions(b.id) - userCompletions(a.id);
+    return a.name.localeCompare(b.name);
+  });
+
+  // Group by team
+  const grouped = {};
+  members.forEach(u => {
+    const key = u.teamId || '__none__';
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(u);
+  });
+  const teamsToShow = filterTeam ? allTeams.filter(t => t.id === filterTeam) : allTeams;
+  const teamSections = teamsToShow.map(t => ({ team: t, members: grouped[t.id] || [] }));
+  if (!filterTeam && grouped['__none__']?.length)
+    teamSections.push({ team: null, members: grouped['__none__'] });
+
+  const memberCard = (u, i) => {
+    const assigned   = getUserAssignments(u.id).length;
+    const done       = userCompletions(u.id);
+    const avg        = userAvgProgress(u.id);
+    const badgeColor = done === assigned && assigned > 0 ? '#2e7d32' : done > 0 ? '#e65100' : '#757575';
+
+    let progressBlock = '';
+    if (filterCourse) {
+      const c  = getCourse(filterCourse);
+      const p  = getProgress(u.id, filterCourse);
+      const ia = getUserAssignments(u.id).includes(filterCourse);
+      if (!ia) {
+        progressBlock = `<div style="font-size:.8rem;color:var(--text-muted);margin:.4rem 0">Not assigned</div>`;
+      } else if (p.completed) {
+        const col = p.passed ? 'var(--accent-dark)' : '#e53935';
+        const lbl = p.passed ? '✓ Passed' : '✗ Failed';
+        progressBlock = `
+          <div style="display:flex;justify-content:space-between;font-size:.8rem;margin:.4rem 0">
+            <span style="font-weight:700;color:${col}">${lbl}</span>
+            ${p.score != null ? `<span style="color:var(--text-muted)">${p.score}%</span>` : ''}
+          </div>
+          <div class="progress-bar-wrap"><div class="progress-bar" style="width:100%;background:${col}"></div></div>`;
+      } else if (p.currentSlide > 0) {
+        const pct = c?.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0;
+        progressBlock = `
+          <div style="font-size:.8rem;color:var(--text-muted);margin:.4rem 0">In Progress · ${pct}%</div>
+          <div class="progress-bar-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>`;
+      } else {
+        progressBlock = `
+          <div style="font-size:.8rem;color:var(--text-muted);margin:.4rem 0">Not started</div>
+          <div class="progress-bar-wrap"><div class="progress-bar" style="width:0%"></div></div>`;
+      }
+    } else {
+      progressBlock = `
+        <div class="member-stats">
+          <span><strong>${assigned}</strong> assigned</span>
+          <span><strong>${done}</strong> completed</span>
+          <span><strong>${avg}%</strong> avg</span>
+        </div>
+        <div class="progress-bar-wrap"><div class="progress-bar" style="width:${avg}%"></div></div>`;
+    }
+
+    return `<div class="member-card" style="animation-delay:${i*0.05}s">
+      <div class="member-card-top">
+        ${avatarHTML(u, 44)}
+        <div class="member-info">
+          <div class="member-name">${esc(u.name)}</div>
+          <div class="member-role">${esc(allTeams.find(t=>t.id===u.teamId)?.name||'No team')}</div>
+          <div style="font-size:.72rem;color:var(--text-muted)">${esc(u.email)}</div>
+        </div>
+        <span class="badge" style="background:${badgeColor};color:white">${done}/${assigned}</span>
+      </div>
+      ${progressBlock}
+      <div style="display:flex;gap:.5rem;margin-top:.5rem">
+        <button class="btn btn-outline btn-sm" onclick="promoteUser('${u.id}')">⬆ Make Admin</button>
+        <button class="btn btn-outline btn-sm" onclick="editUserRole('${u.id}')">✏️ Edit</button>
+      </div>
+    </div>`;
+  };
+
+  const teamSection = ({ team, members: ms }) => {
+    const label   = team ? esc(team.name) : 'No Team';
+    const avgTeam = ms.length ? Math.round(ms.reduce((s,u) => s + userAvgProgress(u.id), 0) / ms.length) : 0;
+    const allDone = ms.filter(u => { const a = getUserAssignments(u.id).length; return a > 0 && userCompletions(u.id) === a; }).length;
+    return `<div class="team-group">
+      <div class="team-group-header">
+        <div>
+          <span class="team-group-name">${label}</span>
+          <span style="font-size:.8rem;color:var(--text-muted);margin-left:.6rem">${ms.length} member${ms.length!==1?'s':''}</span>
+        </div>
+        <div class="team-group-stats">
+          <span><strong>${avgTeam}%</strong> avg</span>
+          <span><strong>${allDone}/${ms.length}</strong> fully done</span>
+        </div>
+      </div>
+      ${ms.length === 0
+        ? `<p style="color:var(--text-muted);font-size:.85rem;padding:.25rem 0">No members in this team yet.</p>`
+        : `<div class="member-grid">${ms.map((u,i) => memberCard(u,i)).join('')}</div>`}
+    </div>`;
+  };
+
   setMain(`
     <div class="page-header">
       <h1>Team Progress</h1>
       <p>Track and manage your team members</p>
     </div>
-    <p class="section-heading">Learners</p>
-    <div class="member-grid">
-      ${learners().length === 0 ? `<div class="empty-state" style="padding:2rem"><span class="empty-icon">👥</span><p>No learners yet — they'll appear here after signing in.</p></div>` :
-        learners().map((u, i) => {
-          const assigned = getUserAssignments(u.id).length;
-          const done     = userCompletions(u.id);
-          const avg      = userAvgProgress(u.id);
-          const badgeColor = done === assigned && assigned > 0 ? '#2e7d32' : done > 0 ? '#e65100' : '#757575';
-          return `<div class="member-card" style="animation-delay:${i*0.07}s">
-            <div class="member-card-top">
-              ${avatarHTML(u, 44)}
-              <div class="member-info">
-                <div class="member-name">${esc(u.name)}</div>
-                <div class="member-role">${esc(allTeams.find(t=>t.id===u.teamId)?.name||'No team')}</div>
-                <div style="font-size:.72rem;color:var(--text-muted)">${esc(u.email)}</div>
-              </div>
-              <span class="badge" style="background:${badgeColor};color:white">${done}/${assigned}</span>
-            </div>
-            <div class="member-stats">
-              <span><strong>${assigned}</strong> assigned</span>
-              <span><strong>${done}</strong> completed</span>
-              <span><strong>${avg}%</strong> avg</span>
-            </div>
-            <div class="progress-bar-wrap"><div class="progress-bar" style="width:${avg}%"></div></div>
-            <div style="display:flex;gap:.5rem;margin-top:.5rem">
-              <button class="btn btn-outline btn-sm" onclick="promoteUser('${u.id}')">⬆ Make Admin</button>
-              <button class="btn btn-outline btn-sm" onclick="editUserRole('${u.id}')">✏️ Role</button>
-            </div>
-          </div>`;
-        }).join('')}
+    <div class="toolbar" style="flex-wrap:wrap;gap:.5rem;margin-bottom:1.25rem">
+      <div class="toolbar-search" style="flex:1;min-width:180px">
+        <svg viewBox="0 0 20 20" fill="none"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.5"/><path d="M13 13L17 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input placeholder="Search members…" value="${esc(searchQ)}"
+          oninput="renderAdminTeam(document.getElementById('tp-team')?.value,document.getElementById('tp-course')?.value,this.value,document.getElementById('tp-sort')?.value)" />
+      </div>
+      <select class="toolbar-select" id="tp-team"
+        onchange="renderAdminTeam(this.value,document.getElementById('tp-course')?.value,document.querySelector('.toolbar-search input')?.value,document.getElementById('tp-sort')?.value)">
+        <option value="">All Teams</option>
+        ${allTeams.map(t => `<option value="${t.id}" ${filterTeam===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}
+      </select>
+      <select class="toolbar-select" id="tp-course"
+        onchange="renderAdminTeam(document.getElementById('tp-team')?.value,this.value,document.querySelector('.toolbar-search input')?.value,document.getElementById('tp-sort')?.value)">
+        <option value="">All Courses</option>
+        ${courses.map(c => `<option value="${c.id}" ${filterCourse===c.id?'selected':''}>${esc(c.title)}</option>`).join('')}
+      </select>
+      <select class="toolbar-select" id="tp-sort"
+        onchange="renderAdminTeam(document.getElementById('tp-team')?.value,document.getElementById('tp-course')?.value,document.querySelector('.toolbar-search input')?.value,this.value)">
+        <option value="name"        ${sortBy==='name'?'selected':''}>Sort: Name</option>
+        <option value="progress"    ${sortBy==='progress'?'selected':''}>Sort: Progress</option>
+        <option value="completions" ${sortBy==='completions'?'selected':''}>Sort: Completions</option>
+      </select>
     </div>
+
+    ${teamSections.length === 0
+      ? `<div class="empty-state"><span class="empty-icon">👥</span><h2>No members found</h2><p>Try adjusting your filters.</p></div>`
+      : teamSections.map(teamSection).join('')}
+
     <p class="section-heading" style="margin-top:1.5rem">Admins</p>
     <div class="member-grid">
       ${allUsers.filter(u => u.isAdmin).map((u, i) => `
         <div class="member-card" style="animation-delay:${i*0.07}s">
           <div class="member-card-top">
-            <div class="user-avatar" style="background:${u.color};width:44px;height:44px">${initials(u.name)}</div>
+            ${avatarHTML(u, 44)}
             <div class="member-info">
               <div class="member-name">${esc(u.name)}</div>
               <div class="member-role">${esc(allTeams.find(t=>t.id===u.teamId)?.name||'')}</div>

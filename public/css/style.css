@@ -646,6 +646,15 @@ img { max-width: 100%; }
 .assess-breakdown-row.wrong .assess-breakdown-icon { color: #c62828; }
 .assess-breakdown-q { color: var(--text); line-height: 1.4; }
 
+/* ─── Team Progress Groups ────────────────────────────────────────────────── */
+.team-group { margin-bottom: 2rem; }
+.team-group-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .55rem 0 .75rem; border-bottom: 2px solid var(--border); margin-bottom: 1rem;
+}
+.team-group-name { font-weight: 800; font-size: 1rem; color: var(--primary); }
+.team-group-stats { display: flex; gap: 1.25rem; font-size: .82rem; color: var(--text-muted); }
+
 /* ─── Learner Settings ────────────────────────────────────────────────────── */
 .settings-card {
   background: var(--card-bg); border: 1.5px solid var(--border);
