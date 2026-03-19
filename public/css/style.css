@@ -1160,23 +1160,27 @@ img { max-width: 100%; }
 
 /* ─── Reports Hover Cards ─────────────────────────────────────────────────── */
 .rpt-hover-wrap { position: relative; }
+.reports-top-list, .reports-table-wrap { overflow: visible; }
 .rpt-hover-card {
   display: none;
   position: absolute;
-  left: 0; top: calc(100% + 6px);
+  left: calc(100% + 10px); top: 50%;
+  transform: translateY(-50%);
   min-width: 240px;
-  max-width: 320px;
-  max-height: 280px;
+  max-width: 300px;
+  max-height: 300px;
   overflow-y: auto;
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  z-index: 200;
+  z-index: 500;
   padding: .6rem .75rem .5rem;
-  pointer-events: none;
 }
-.rpt-hover-card--right { left: auto; right: 0; }
+.rpt-hover-card--right {
+  left: auto; right: calc(100% + 10px);
+  top: 50%; transform: translateY(-50%);
+}
 .rpt-hover-wrap:hover .rpt-hover-card { display: block; }
 .rpt-hover-title {
   font-size: .75rem;
@@ -1346,7 +1350,7 @@ img { max-width: 100%; }
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
-  overflow-x: auto;
+  overflow: visible;
   margin-top: .75rem;
 }
 .reports-table {
