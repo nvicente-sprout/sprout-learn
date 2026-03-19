@@ -2798,7 +2798,7 @@ function renderAdminReports() {
           const avg  = userAvgProgress(u.id);
           const teamName = allTeams.find(t=>t.id===u.teamId)?.name || '—';
           const maxDone  = userCompletions(topPerformers[0].id) || 1;
-          return `<div class="reports-top-item reports-top-item--clickable" style="animation-delay:${i*.06}s" onclick="navigate('/admin/reports/user/${u.id}')">
+          return `<div class="reports-top-item reports-top-item--clickable" style="animation-delay:${i*.06}s" onclick="openReportsUserPanel('${u.id}')">
             <div class="reports-top-rank">${medals[i]||`#${i+1}`}</div>
             ${avatarHTML(u, 38)}
             <div style="flex:1;min-width:0">
@@ -2832,7 +2832,7 @@ function renderAdminReports() {
           <tbody>
             ${courseRows.length ? courseRows.map(r => {
               const barColor = r.passRate >= 70 ? '#2e7d32' : r.passRate >= 40 ? '#f57c00' : r.passRate > 0 ? '#c62828' : '#ccc';
-              return `<tr class="reports-table-row--clickable" onclick="navigate('/admin/reports/course/${r.c.id}')">
+              return `<tr class="reports-table-row--clickable" onclick="openReportsCoursePanel('${r.c.id}')">
                 <td>
                   <div style="display:flex;align-items:center;gap:.6rem">
                     ${r.c.coverUrl ? `<img src="${r.c.coverUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0" />` : `<div style="width:36px;height:36px;border-radius:6px;background:#e8f5e9;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">${CAT_EMOJI[r.c.category]||'📚'}</div>`}
