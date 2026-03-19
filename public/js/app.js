@@ -471,6 +471,12 @@ async function handleAuthUser(authUser) {
   if (!currentUser) { currentUser = null; navigate('/login'); return; }
   await loadNotifications();
   loadFlappyScores();
+  sb.channel('flappy_scores_rt')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'flappy_scores' }, async () => {
+      await loadFlappyScores();
+      renderFlappyLeaderboard();
+    })
+    .subscribe();
   if (!currentUser.teamId) { renderCompleteProfile(); return; }
   navigate(currentUser.isAdmin ? '/admin/dashboard' : '/learner/dashboard');
 }
