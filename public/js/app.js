@@ -56,6 +56,106 @@ let assessmentCurrentQ = 0;
 let assessmentCourseId = null;
 
 let allTeams = [];
+let notifications = [];
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+async function loadNotifications() {
+  if (!currentUser) return;
+  let query = sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(60);
+  if (currentUser.isAdmin) {
+    query = query.or(`user_id.eq.${currentUser.id},user_id.is.null`);
+  } else {
+    query = query.eq('user_id', currentUser.id);
+  }
+  const { data } = await query;
+  notifications = data || [];
+  updateBellBadge();
+}
+
+async function createNotif(userId, type, title, body = '') {
+  const { data, error } = await sb.from('notifications')
+    .insert({ user_id: userId ?? null, type, title, body, is_read: false })
+    .select().single();
+  if (error) return;
+  const isForMe = data.user_id === null ? currentUser?.isAdmin : data.user_id === currentUser?.id;
+  if (isForMe) {
+    notifications.unshift(data);
+    updateBellBadge();
+    if (document.getElementById('notif-panel')?.dataset.open === 'true') renderNotifPanel();
+  }
+}
+
+function updateBellBadge() {
+  const badge = document.getElementById('bell-badge');
+  const unread = notifications.filter(n => !n.is_read).length;
+  if (!badge) return;
+  badge.textContent = unread > 9 ? '9+' : unread;
+  badge.style.display = unread > 0 ? '' : 'none';
+}
+
+function timeAgo(isoStr) {
+  const mins = Math.floor((Date.now() - new Date(isoStr).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+const NOTIF_ICON = { course_assigned: '📚', new_course: '🌱', user_joined: '👋', course_completed: '✅' };
+
+function toggleNotifPanel() {
+  const panel = document.getElementById('notif-panel');
+  if (!panel) return;
+  const isOpen = panel.dataset.open === 'true';
+  if (isOpen) {
+    panel.dataset.open = 'false';
+    panel.style.display = 'none';
+  } else {
+    panel.dataset.open = 'true';
+    panel.style.display = '';
+    renderNotifPanel();
+    markAllNotifsRead();
+  }
+}
+
+function renderNotifPanel() {
+  const panel = document.getElementById('notif-panel');
+  if (!panel) return;
+  panel.innerHTML = `
+    <div class="notif-header">
+      <span class="notif-title">Notifications</span>
+      <button class="notif-clear-btn" onclick="clearAllNotifs()">Clear all</button>
+    </div>
+    <div class="notif-list">
+      ${notifications.length ? notifications.map(n => `
+        <div class="notif-item ${n.is_read ? '' : 'unread'}">
+          <div class="notif-item-icon">${NOTIF_ICON[n.type] || '🔔'}</div>
+          <div class="notif-item-body">
+            <div class="notif-item-title">${esc(n.title)}</div>
+            ${n.body ? `<div class="notif-item-sub">${esc(n.body)}</div>` : ''}
+            <div class="notif-item-time">${timeAgo(n.created_at)}</div>
+          </div>
+        </div>`).join('')
+      : '<div class="notif-empty">You\'re all caught up 🎉</div>'}
+    </div>`;
+}
+
+async function markAllNotifsRead() {
+  const unreadIds = notifications.filter(n => !n.is_read).map(n => n.id);
+  if (!unreadIds.length) return;
+  notifications.forEach(n => { n.is_read = true; });
+  updateBellBadge();
+  await sb.from('notifications').update({ is_read: true }).in('id', unreadIds);
+}
+
+async function clearAllNotifs() {
+  const ids = notifications.map(n => n.id);
+  notifications = [];
+  updateBellBadge();
+  renderNotifPanel();
+  if (ids.length) await sb.from('notifications').delete().in('id', ids);
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function esc(str) {
@@ -349,6 +449,11 @@ async function handleAuthUser(authUser) {
     await sb.from('users').insert({
       id: authUser.id, email, name, is_admin: false, avatar_url: googleAvatar,
     });
+    // Notify admins of new joiner (user_id null = admin broadcast)
+    await sb.from('notifications').insert({
+      user_id: null, type: 'user_joined',
+      title: `👋 New learner joined: ${name}`, body: email, is_read: false,
+    });
   } else if (!existingUser.avatar_url && googleAvatar) {
     // Backfill Google photo for existing users who don't have one yet
     await sb.from('users').update({ avatar_url: googleAvatar }).eq('id', authUser.id);
@@ -357,6 +462,7 @@ async function handleAuthUser(authUser) {
   await loadData();
   currentUser = allUsers.find(u => u.id === authUser.id);
   if (!currentUser) { currentUser = null; navigate('/login'); return; }
+  await loadNotifications();
   if (!currentUser.teamId) { renderCompleteProfile(); return; }
   navigate(currentUser.isAdmin ? '/admin/dashboard' : '/learner/dashboard');
 }
@@ -392,6 +498,21 @@ function subscribeRealtime() {
       const hash = window.location.hash.slice(1);
       if (currentUser?.id === r.user_id && hash === '/learner/dashboard') renderLearnerDashboard();
       if (hash === '/admin/team') renderAdminTeam();
+    })
+    .subscribe();
+
+  // Realtime notifications
+  sb.channel('notifications-live')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, ({ new: n }) => {
+      const isForMe = n.user_id === null ? currentUser?.isAdmin : n.user_id === currentUser?.id;
+      if (!isForMe) return;
+      if (notifications.find(x => x.id === n.id)) return; // dedupe (we may have added it locally already)
+      notifications.unshift(n);
+      updateBellBadge();
+      // Pulse the bell
+      document.getElementById('bell-btn')?.classList.add('bell-pulse');
+      setTimeout(() => document.getElementById('bell-btn')?.classList.remove('bell-pulse'), 600);
+      if (document.getElementById('notif-panel')?.dataset.open === 'true') renderNotifPanel();
     })
     .subscribe();
 }
@@ -552,6 +673,7 @@ function toggleLearnerView() {
 
 function renderLayout() {
   const isAdmin = currentUser?.isAdmin && !adminViewingAsLearner;
+  const unread = notifications.filter(n => !n.is_read).length;
   const navLinks = isAdmin ? [
     { href: '/admin/dashboard',   label: 'Dashboard',     icon: iconHome() },
     { href: '/admin/courses',     label: 'Courses',       icon: iconCourses() },
@@ -582,6 +704,13 @@ function renderLayout() {
           <nav class="header-nav">${tabs}</nav>
           <div class="header-user">
             ${currentUser.isAdmin ? `<button class="btn-view-toggle" onclick="toggleLearnerView()">${adminViewingAsLearner ? '⚙️ Admin View' : '👁 Learner View'}</button>` : ''}
+            <div class="notif-wrap" id="notif-wrap">
+              <button class="bell-btn" id="bell-btn" onclick="toggleNotifPanel()" aria-label="Notifications">
+                ${iconBell()}
+                <span class="bell-badge" id="bell-badge" style="display:${unread > 0 ? '' : 'none'}">${unread > 9 ? '9+' : unread}</span>
+              </button>
+              <div class="notif-panel" id="notif-panel" data-open="false" style="display:none"></div>
+            </div>
             ${currentUser.avatarUrl ? `<div class="topbar-avatar" style="overflow:hidden"><img src="${currentUser.avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" /></div>` : `<div class="topbar-avatar" style="background:${currentUser.color}">${initials(currentUser.name)}</div>`}
             <span class="topbar-name">${esc(currentUser.name.split(' ')[0])}</span>
             <button class="topbar-logout" onclick="logout()">Logout</button>
@@ -599,6 +728,15 @@ function renderLayout() {
 function toggleMobileMenu() {
   document.getElementById('mobile-nav')?.classList.toggle('open');
 }
+
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('notif-wrap');
+  const panel = document.getElementById('notif-panel');
+  if (panel && panel.dataset.open === 'true' && wrap && !wrap.contains(e.target)) {
+    panel.dataset.open = 'false';
+    panel.style.display = 'none';
+  }
+});
 
 function setMain(html) {
   const el = document.getElementById('main-content');
@@ -866,6 +1004,7 @@ function createCourse() {
     });
   closeModal();
   toast('Course created!');
+  createNotif(null, 'new_course', `🌱 New course added: ${title}`, document.getElementById('nc-cat')?.value || '');
   renderAdminCourses();
 }
 
@@ -989,6 +1128,7 @@ async function submitUrlCourse() {
     return;
   }
 
+  createNotif(null, 'new_course', `🌱 New course added: ${title}`, cat);
   if (mode === 'ai') {
     showLoader('Generating questions', detected.type === 'youtube' ? 'Fetching video transcript…' : 'Reading slide content…');
     try {
@@ -1097,6 +1237,7 @@ async function submitScormCourse() {
     courses.shift();
   } else {
     toast('✅ SCORM course added!');
+    createNotif(null, 'new_course', `🌱 New course added: ${title}`, cat);
   }
   renderAdminCourses();
 }
@@ -1847,6 +1988,11 @@ async function toggleAssignee(userId, courseId) {
   if (error) {
     toast('Failed to ' + (willAssign ? 'assign' : 'unassign') + ': ' + error.message, 'error');
     return;
+  }
+  if (willAssign) {
+    const course = getCourse(courseId);
+    const user   = getUser(userId);
+    if (course && user) createNotif(userId, 'course_assigned', `📚 New course assigned: ${course.title}`, `Assigned by ${currentUser.name}`);
   }
 
   const assigned = isAssigned(userId, courseId);
@@ -3100,6 +3246,10 @@ function submitAssessment(courseId) {
   const score  = Math.round((correct / qs.length) * 100);
   const passed = score >= 80;
   setProgress(currentUser.id, courseId, { completed: passed, score, passed });
+  if (passed) {
+    const course = getCourse(courseId);
+    createNotif(null, 'course_completed', `✅ ${currentUser.name} completed ${course?.title || 'a course'}`, `Score: ${score}%`);
+  }
 
   const course = getCourse(courseId);
   document.getElementById('app').innerHTML = `
@@ -3191,4 +3341,5 @@ function iconUsers()   { return `<svg viewBox="0 0 24 24" fill="none" stroke="cu
 function iconTrophy()  { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 9a6 6 0 0 0 12 0"/><line x1="12" y1="15" x2="12" y2="22"/><polyline points="9 22 15 22"/></svg>`; }
 function iconBook()     { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`; }
 function iconReport()   { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>`; }
+function iconBell()     { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`; }
 function iconSettings() { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`; }
