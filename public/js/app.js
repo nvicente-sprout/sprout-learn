@@ -63,6 +63,14 @@ function esc(str) {
 function initials(name) {
   return name.split(' ').slice(0,2).map(w => w[0]).join('').toUpperCase();
 }
+function avatarHTML(u, size = 40, extraStyle = '') {
+  const fs = size <= 32 ? '.72rem' : size <= 38 ? '.8rem' : '.85rem';
+  const base = `width:${size}px;height:${size}px;${extraStyle}`;
+  if (u.avatarUrl) {
+    return `<div class="user-avatar" style="${base};background:${u.color};overflow:hidden"><img src="${u.avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" /></div>`;
+  }
+  return `<div class="user-avatar" style="${base};background:${u.color};font-size:${fs}">${initials(u.name)}</div>`;
+}
 function formatDate(d = new Date()) {
   return d.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
 }
@@ -280,6 +288,7 @@ async function loadData() {
     allUsers = uData ? uData.map((u, i) => ({
       id: u.id, email: u.email, name: u.name || u.email.split('@')[0],
       role: u.role, isAdmin: u.is_admin, teamId: u.team_id || null,
+      avatarUrl: u.avatar_url || null,
       color: USER_COLORS[i % USER_COLORS.length],
     })) : [];
 
@@ -434,7 +443,7 @@ function handleRoute() {
   else if (hash === '/admin/settings')  renderAdminSettings();
   else if (hash === '/learner/dashboard')  renderLearnerDashboard();
   else if (hash === '/learner/library')    renderLearnerLibrary();
-  else if (hash === '/learner/my-learning') renderMyLearning();
+  else if (hash === '/learner/settings')   renderLearnerSettings();
   else if (hash === '/learner/leaderboard') renderLeaderboard(false);
   else navigate(currentUser.isAdmin ? '/admin/dashboard' : '/learner/dashboard');
 }
@@ -525,8 +534,8 @@ function renderLayout() {
   ] : [
     { href: '/learner/dashboard',   label: 'Dashboard',      icon: iconHome() },
     { href: '/learner/library',     label: 'Course Library',  icon: iconCourses() },
-    { href: '/learner/my-learning', label: 'My Learning',     icon: iconBook() },
     { href: '/learner/leaderboard', label: 'Leaderboard',     icon: iconTrophy() },
+    { href: '/learner/settings',    label: 'Settings',        icon: iconSettings() },
   ];
 
   const tabs = navLinks.map(l => `
@@ -545,7 +554,7 @@ function renderLayout() {
           <nav class="header-nav">${tabs}</nav>
           <div class="header-user">
             ${currentUser.isAdmin ? `<button class="btn-view-toggle" onclick="toggleLearnerView()">${adminViewingAsLearner ? '⚙️ Admin View' : '👁 Learner View'}</button>` : ''}
-            <div class="topbar-avatar" style="background:${currentUser.color}">${initials(currentUser.name)}</div>
+            ${currentUser.avatarUrl ? `<div class="topbar-avatar" style="overflow:hidden"><img src="${currentUser.avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" /></div>` : `<div class="topbar-avatar" style="background:${currentUser.color}">${initials(currentUser.name)}</div>`}
             <span class="topbar-name">${esc(currentUser.name.split(' ')[0])}</span>
             <button class="topbar-logout" onclick="logout()">Logout</button>
             <button class="hamburger" onclick="toggleMobileMenu()" aria-label="Menu">
@@ -619,7 +628,7 @@ function lbItem(u, i) {
   const avg  = userAvgProgress(u.id);
   return `<div class="lb-item ${i===0?'top1':''}" style="animation-delay:${i*0.07}s">
     <div class="lb-rank">${medals[i] || `#${i+1}`}</div>
-    <div class="user-avatar" style="background:${u.color};width:38px;height:38px;font-size:.8rem">${initials(u.name)}</div>
+    ${avatarHTML(u, 38)}
     <div class="lb-info"><div class="lb-name">${esc(u.name)}</div><div class="lb-role">${esc(allTeams.find(t=>t.id===u.teamId)?.name||'')}</div></div>
     <div class="lb-stats"><strong>${done}</strong> completions &nbsp;·&nbsp; ${avg}% avg</div>
   </div>`;
@@ -1518,7 +1527,7 @@ function showAssignModal(courseId) {
           ${allLearners.map(u => `
             <div class="assignee-item ${isAssigned(u.id,courseId)?'selected':''}" id="assignee-${u.id}" onclick="toggleAssignee('${u.id}','${courseId}')">
               <input type="checkbox" class="assignee-check" ${isAssigned(u.id,courseId)?'checked':''} />
-              <div class="user-avatar" style="background:${u.color};width:32px;height:32px;font-size:.72rem">${initials(u.name)}</div>
+              ${avatarHTML(u, 32)}
               <div><div style="font-weight:600;font-size:.88rem">${esc(u.name)}</div><div style="font-size:.75rem;color:var(--text-muted)">${esc(allTeams.find(t=>t.id===u.teamId)?.name||'')}</div></div>
             </div>`).join('')}
         </div>
@@ -1594,7 +1603,7 @@ function renderAdminTeam() {
           const badgeColor = done === assigned && assigned > 0 ? '#2e7d32' : done > 0 ? '#e65100' : '#757575';
           return `<div class="member-card" style="animation-delay:${i*0.07}s">
             <div class="member-card-top">
-              <div class="user-avatar" style="background:${u.color};width:44px;height:44px">${initials(u.name)}</div>
+              ${avatarHTML(u, 44)}
               <div class="member-info">
                 <div class="member-name">${esc(u.name)}</div>
                 <div class="member-role">${esc(allTeams.find(t=>t.id===u.teamId)?.name||'No team')}</div>
@@ -1713,7 +1722,7 @@ function renderAdminSettings() {
           const team = allTeams.find(t => t.id === u.teamId);
           return `<div class="settings-list-item">
             <div style="display:flex;align-items:center;gap:.75rem;min-width:0">
-              <div class="user-avatar" style="background:${u.color};width:38px;height:38px;font-size:.72rem;flex-shrink:0">${initials(u.name)}</div>
+              ${avatarHTML(u, 38, 'flex-shrink:0')}
               <div style="min-width:0">
                 <div style="font-weight:600;font-size:.9rem">${esc(u.name)}</div>
                 <div style="font-size:.74rem;color:var(--text-muted)">${esc(u.email)} · ${team ? esc(team.name) : '<em>No team</em>'}</div>
@@ -1888,7 +1897,7 @@ function renderLeaderboard(isAdmin, filterCourseId) {
                 : `<span class="lb-status-badge">Not taken</span>`;
               return `<div class="lb-item ${i===0&&u.score!==null?'top1':''}" style="animation-delay:${i*0.07}s">
                 <div class="lb-rank">${u.score !== null ? (medals[i] || `#${i+1}`) : '—'}</div>
-                <div class="user-avatar" style="background:${u.color};width:42px;height:42px">${initials(u.name)}</div>
+                ${avatarHTML(u, 42)}
                 <div class="lb-info"><div class="lb-name">${esc(u.name)}</div><div class="lb-role">${esc(allTeams.find(t=>t.id===u.teamId)?.name||'')}</div></div>
                 <div>${statusBadge}</div>
                 <div class="lb-stats"><strong>${scoreDisplay}</strong> score</div>
@@ -1942,8 +1951,7 @@ function renderLearnerDashboard() {
   const avg      = userAvgProgress(uid);
 
   const continueList = assigned
-    .filter(cid => !getProgress(uid, cid).completed)
-    .slice(0, 6);
+    .filter(cid => !getProgress(uid, cid).completed);
 
   setMain(`
     <div class="page-header fade-up">
@@ -2079,37 +2087,103 @@ function learnerCourseCard(c, uid, i = 0) {
 }
 
 // ─── My Learning ──────────────────────────────────────────────────────────────
-function renderMyLearning() {
-  setTitle('My Learning');
+function renderLearnerSettings() {
+  setTitle('Settings');
   const uid = currentUser.id;
-  const assigned = getUserAssignments(uid);
+  const badges = userBadges(uid);
   setMain(`
-    <div class="page-header"><h1>My Learning</h1><p>${assigned.length} course${assigned.length!==1?'s':''} assigned to you</p></div>
-    ${assigned.length ? `<div class="continue-list">
-      ${assigned.map(cid => {
-        const c = getCourse(cid); if (!c) return '';
-        const p = getProgress(uid, cid);
-        const pct = c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : p.completed ? 100 : 0;
-        const label = p.completed ? 'Review' : p.currentSlide > 0 ? 'Continue' : 'Start';
-        return `<div class="continue-item">
-          <div style="font-size:1.5rem">${CAT_EMOJI[c.category]||'📚'}</div>
-          <div class="continue-item-info">
-            <div class="continue-item-title">${esc(c.title)}</div>
-            <div class="continue-item-meta">${esc(c.category)} · ${esc(c.type)} ${p.completed ? '· ✓ Completed' : `· ${pct}%`}</div>
+    <div class="page-header fade-up"><h1>Settings</h1><p>Manage your profile</p></div>
+    <div class="settings-card">
+      <p class="section-heading" style="margin-top:0">Profile Photo</p>
+      <div style="display:flex;align-items:center;gap:1.25rem;margin-bottom:1.75rem">
+        <div class="learner-avatar-upload" id="lav-wrap" onclick="document.getElementById('lav-input').click()" title="Change photo">
+          ${currentUser.avatarUrl
+            ? `<img src="${currentUser.avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" />`
+            : `<span style="font-size:1.6rem;font-weight:700;color:white">${initials(currentUser.name)}</span>`}
+          <div class="learner-avatar-overlay">📷</div>
+        </div>
+        <input type="file" id="lav-input" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)" />
+        <div>
+          <div style="font-weight:700">${esc(currentUser.name)}</div>
+          <div style="font-size:.82rem;color:var(--text-muted);margin-bottom:.5rem">${esc(currentUser.email)}</div>
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('lav-input').click()">Change Photo</button>
+        </div>
+      </div>
+      <p class="section-heading" style="margin-top:0">Profile Info</p>
+      <div class="form-group">
+        <label class="form-label">Display Name</label>
+        <input id="ls-name" class="form-input" value="${esc(currentUser.name)}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input class="form-input" value="${esc(currentUser.email)}" disabled style="opacity:.55;cursor:not-allowed" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Team</label>
+        <select id="ls-team" class="form-select">
+          ${allTeams.map(t => `<option value="${t.id}" ${currentUser.teamId===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="saveLearnerSettings()">Save Changes</button>
+    </div>
+    ${badges.length ? `
+    <p class="section-heading">My Badges</p>
+    <div style="display:flex;flex-wrap:wrap;gap:.75rem">
+      ${badges.map(b => `
+        <div style="background:var(--card-bg);border:1.5px solid var(--border);border-radius:var(--radius);padding:.85rem 1.1rem;display:flex;align-items:center;gap:.75rem;min-width:190px;animation:fadeUp .3s ease both">
+          <span style="font-size:1.75rem">${b.icon}</span>
+          <div>
+            <div style="font-weight:700;font-size:.88rem">${esc(b.label)}</div>
+            <div style="font-size:.76rem;color:var(--text-muted)">${esc(b.desc)}</div>
           </div>
-          <div class="continue-item-progress">
-            <div class="progress-bar-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>
-          </div>
-          <a href="#/course/${c.id}" class="btn btn-primary btn-sm">${label}</a>
-        </div>`;
-      }).join('')}
-    </div>` : `
-    <div class="empty-state">
-      <span class="empty-icon">📋</span>
-      <h2>No courses assigned yet</h2>
-      <p>Your admin will assign courses to you. In the meantime, browse the library.</p>
-      <a href="#/learner/library" class="btn btn-primary" style="margin-top:1rem">Browse Library</a>
-    </div>`}`);
+        </div>`).join('')}
+    </div>` : ''}
+  `);
+}
+
+async function handleAvatarUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const img = new Image();
+  img.onload = async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 200; canvas.height = 200;
+    const ctx = canvas.getContext('2d');
+    const size = Math.min(img.width, img.height);
+    const sx = (img.width - size) / 2, sy = (img.height - size) / 2;
+    ctx.drawImage(img, sx, sy, size, size, 0, 0, 200, 200);
+    canvas.toBlob(async blob => {
+      showLoader('Uploading', 'Saving your photo…');
+      const path = `avatars/${currentUser.id}`;
+      const { error: upErr } = await sb.storage.from('course-files').upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
+      if (upErr) { hideLoader(); toast('Upload failed: ' + upErr.message, 'error'); return; }
+      const { data: { publicUrl } } = sb.storage.from('course-files').getPublicUrl(path);
+      const { error: dbErr } = await sb.from('users').update({ avatar_url: publicUrl }).eq('id', currentUser.id);
+      if (dbErr) { hideLoader(); toast('Save failed: ' + dbErr.message, 'error'); return; }
+      currentUser.avatarUrl = publicUrl;
+      const u = getUser(currentUser.id);
+      if (u) u.avatarUrl = publicUrl;
+      hideLoader();
+      toast('Profile photo updated!');
+      renderLearnerSettings();
+    }, 'image/jpeg', 0.88);
+  };
+  img.src = URL.createObjectURL(file);
+}
+
+async function saveLearnerSettings() {
+  const name   = document.getElementById('ls-name')?.value.trim();
+  const teamId = document.getElementById('ls-team')?.value || null;
+  if (!name) { toast('Name is required', 'error'); return; }
+  const { error } = await sb.from('users').update({ name, team_id: teamId }).eq('id', currentUser.id);
+  if (error) { toast('Save failed: ' + error.message, 'error'); return; }
+  currentUser.name = name;
+  currentUser.teamId = teamId;
+  const u = getUser(currentUser.id);
+  if (u) { u.name = name; u.teamId = teamId; }
+  toast('Profile saved!');
+  renderLayout();
+  navigate('/learner/settings');
 }
 
 // ─── Course Viewer ────────────────────────────────────────────────────────────
