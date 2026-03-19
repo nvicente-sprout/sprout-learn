@@ -1477,15 +1477,26 @@ img { max-width: 100%; }
 }
 
 /* ─── Learner Dashboard — Team Widget ────────────────────────────────────── */
+.ld-top-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: .25rem;
+}
+.ld-stats-inline {
+  flex: 1;
+  min-width: 200px;
+  margin-bottom: 0 !important;
+}
 .ld-team-card {
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
   padding: .5rem .85rem .5rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0;
   animation: fadeUp .35s ease both;
-  display: inline-block;
   width: 100%;
   max-width: 320px;
 }

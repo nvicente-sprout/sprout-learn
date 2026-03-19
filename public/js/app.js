@@ -3476,10 +3476,13 @@ function renderLearnerDashboard() {
       <p>${userLevel(uid).icon} ${userLevel(uid).label} &nbsp;·&nbsp; ${userXP(uid)} XP${userNextLevel(uid) ? ` &nbsp;·&nbsp; ${userNextLevel(uid).xpNeeded} XP to ${userNextLevel(uid).label}` : ' &nbsp;·&nbsp; <strong style="color:var(--accent)">Max Level!</strong>'}</p>
     </div>
     ${userBadges(uid).length ? `<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem">${userBadges(uid).map(b=>`<span title="${b.desc}" style="background:#e8f5e9;color:#1B3A1B;padding:.25rem .65rem;border-radius:20px;font-size:.8rem;font-weight:700;cursor:default">${b.icon} ${b.label}</span>`).join('')}</div>` : ''}
-    <div class="stats-grid">
-      ${statCard('Assigned', assigned.length, '', '#1B3A1B', 0)}
-      ${statCard('Completed', done, '', '#2d5a2d', 1)}
-      ${statCard('Avg Progress', avg, '%', '#3a7a3a', 2)}
+    <div class="ld-top-row">
+      <div class="stats-grid ld-stats-inline">
+        ${statCard('Assigned', assigned.length, '', '#1B3A1B', 0)}
+        ${statCard('Completed', done, '', '#2d5a2d', 1)}
+        ${statCard('Avg Progress', avg, '%', '#3a7a3a', 2)}
+      </div>
+      ${teamWidget}
     </div>
     <p class="section-heading">Continue Learning</p>
     ${continueList.length ? `
@@ -3552,7 +3555,7 @@ function renderLearnerDashboard() {
         <div class="flappy-hint">Tap / <kbd>Space</kbd> to jump &nbsp;·&nbsp; Tap twice = double jump</div>
       </div>
     </div>
-    ${teamWidget}`);
+    `);
 
   document.querySelectorAll('.stat-value[data-target]').forEach(el => {
     animateCount(el, parseInt(el.dataset.target));
