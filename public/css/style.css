@@ -1371,6 +1371,79 @@ img { max-width: 100%; }
 .reports-table tbody tr:last-child td { border-bottom: none; }
 .reports-table tbody tr:hover { background: #f9fbf9; }
 
+/* ─── Flappy Sprout ──────────────────────────────────────────────────────── */
+.flappy-card {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  animation: fadeUp .35s ease both;
+}
+.flappy-canvas {
+  border-radius: 10px;
+  display: block;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 2px 12px rgba(0,0,0,.12);
+}
+.flappy-side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+}
+.flappy-lb-header {
+  font-size: .85rem;
+  font-weight: 800;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.flappy-lb { display: flex; flex-direction: column; gap: .4rem; }
+.flappy-lb-empty { font-size: .82rem; color: var(--text-muted); padding: .5rem 0; }
+.flappy-lb-row {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .4rem .55rem;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: .82rem;
+  transition: background var(--transition);
+}
+.flappy-lb-row--me {
+  background: linear-gradient(135deg, #f0faf0, #e8f5e9);
+  border-color: var(--accent-dark);
+}
+.flappy-lb-rank { width: 1.4rem; text-align: center; font-size: .9rem; flex-shrink: 0; }
+.flappy-lb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.flappy-lb-score { font-weight: 800; color: var(--primary); font-size: .9rem; flex-shrink: 0; }
+.flappy-hint {
+  font-size: .75rem;
+  color: var(--text-muted);
+  margin-top: auto;
+  padding-top: .5rem;
+}
+.flappy-hint kbd {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: .1rem .35rem;
+  font-size: .72rem;
+  font-family: inherit;
+}
+@media (max-width: 600px) {
+  .flappy-card { flex-direction: column; align-items: center; }
+  .flappy-canvas { width: 100%; max-width: 320px; height: auto; }
+}
+
 /* ─── Learner Dashboard — Team Widget ────────────────────────────────────── */
 .ld-team-card {
   background: var(--card-bg);

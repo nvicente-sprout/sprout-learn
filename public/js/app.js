@@ -57,6 +57,8 @@ let assessmentCourseId = null;
 
 let allTeams = [];
 let notifications = [];
+let flappyScores  = [];
+let _flappyGame   = null;
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 async function loadNotifications() {
@@ -468,6 +470,7 @@ async function handleAuthUser(authUser) {
   currentUser = allUsers.find(u => u.id === authUser.id);
   if (!currentUser) { currentUser = null; navigate('/login'); return; }
   await loadNotifications();
+  loadFlappyScores();
   if (!currentUser.teamId) { renderCompleteProfile(); return; }
   navigate(currentUser.isAdmin ? '/admin/dashboard' : '/learner/dashboard');
 }
@@ -593,6 +596,7 @@ function navigate(route) {
 function handleRoute() {
   const hash = window.location.hash.slice(1) || '/login';
   currentRoute = hash;
+  destroyFlappy();
 
   if (!currentUser && hash !== '/login') {
     navigate('/login');
@@ -3081,6 +3085,291 @@ function renderReportsCourse(courseId) {
     </div>`);
 }
 
+// ─── Flappy Sprout ────────────────────────────────────────────────────────────
+async function loadFlappyScores() {
+  try {
+    const { data } = await sb.from('flappy_scores')
+      .select('user_id, high_score')
+      .order('high_score', { ascending: false })
+      .limit(10);
+    if (data) {
+      flappyScores = data.map(r => {
+        const u = getUser(r.user_id);
+        return { userId: r.user_id, name: u?.name || 'Unknown', color: u?.color || '#ccc', avatarUrl: u?.avatarUrl || null, highScore: r.high_score };
+      });
+    }
+  } catch(e) {}
+}
+
+async function saveFlappyScore(score) {
+  try {
+    await sb.from('flappy_scores').upsert(
+      { user_id: currentUser.id, high_score: score, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' }
+    );
+    await loadFlappyScores();
+  } catch(e) {}
+}
+
+function renderFlappyLeaderboard() {
+  const el = document.getElementById('flappy-lb');
+  if (!el) return;
+  const myId = currentUser?.id;
+  if (!flappyScores.length) {
+    el.innerHTML = `<div class="flappy-lb-empty">No scores yet — be the first! 🏆</div>`;
+    return;
+  }
+  el.innerHTML = flappyScores.slice(0, 5).map((r, i) => {
+    const medals = ['🥇','🥈','🥉'];
+    const isMe = r.userId === myId;
+    const avatar = r.avatarUrl
+      ? `<img src="${r.avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block"/>`
+      : initials(r.name);
+    return `<div class="flappy-lb-row${isMe?' flappy-lb-row--me':''}">
+      <div class="flappy-lb-rank">${medals[i] || `#${i+1}`}</div>
+      <div class="user-avatar" style="background:${r.color};width:28px;height:28px;font-size:.6rem;flex-shrink:0">${avatar}</div>
+      <div class="flappy-lb-name">${esc(r.name)}${isMe?'<span class="ld-you-badge" style="margin-left:.3rem">You</span>':''}</div>
+      <div class="flappy-lb-score">${r.highScore}</div>
+    </div>`;
+  }).join('');
+}
+
+function destroyFlappy() {
+  if (_flappyGame) { _flappyGame.destroy(); _flappyGame = null; }
+}
+
+function startFlappyGame() {
+  destroyFlappy();
+  const myScore = flappyScores.find(r => r.userId === currentUser?.id)?.highScore || 0;
+  _flappyGame = new FlappyGame('flappy-canvas', myScore);
+}
+
+class FlappyGame {
+  constructor(canvasId, bestScore = 0) {
+    this.canvas = document.getElementById(canvasId);
+    if (!this.canvas) return;
+    this.ctx    = this.canvas.getContext('2d');
+    this.W      = this.canvas.width;
+    this.H      = this.canvas.height;
+    this.state  = 'idle';
+    this.score  = 0;
+    this.best   = bestScore;
+    this._frame = 0;
+
+    // Bird
+    this.bird = { x: 72, y: this.H / 2, vy: 0, rot: 0, flap: 0 };
+
+    // Pipes
+    this.pipes      = [];
+    this.pipeTimer  = 0;
+    this.PIPE_INT   = 82;
+    this.PIPE_GAP   = 148;
+    this.PIPE_W     = 46;
+    this.PIPE_SPD   = 2.6;
+    this.GROUND_Y   = this.H - 52;
+    this.groundX    = 0;
+
+    // Sprite
+    this.img = new Image();
+    this.img.src = 'assets/logos/logo-icon-green.svg';
+
+    // Input
+    this._input = this._input.bind(this);
+    this.canvas.addEventListener('click',   this._input);
+    this.canvas.addEventListener('touchstart', this._input, { passive: true });
+    document.addEventListener('keydown',    this._input);
+
+    // Loop
+    this._tick = this._tick.bind(this);
+    this._raf  = requestAnimationFrame(this._tick);
+  }
+
+  _input(e) {
+    if (e.type === 'keydown' && e.code !== 'Space') return;
+    if (e.type === 'keydown') e.preventDefault();
+    if (this.state === 'idle' || this.state === 'dead') {
+      this._reset(); this.state = 'playing';
+    } else {
+      this.bird.vy = -7.2; this.bird.flap = 12;
+    }
+  }
+
+  _reset() {
+    this.bird  = { x: 72, y: this.H / 2, vy: 0, rot: 0, flap: 0 };
+    this.pipes = []; this.pipeTimer = 0; this.score = 0; this._frame = 0;
+  }
+
+  _update() {
+    if (this.state !== 'playing') return;
+    this._frame++;
+    const b = this.bird;
+
+    // Physics
+    b.vy  += 0.44;
+    b.y   += b.vy;
+    b.rot  = Math.min(Math.PI / 2.2, Math.max(-Math.PI / 5, b.vy * 0.065));
+    if (b.flap > 0) b.flap--;
+
+    // Ground scroll
+    this.groundX = (this.groundX - this.PIPE_SPD + 40) % 40;
+
+    // Spawn pipes
+    this.pipeTimer++;
+    if (this.pipeTimer >= this.PIPE_INT) {
+      this.pipeTimer = 0;
+      const gapY = 55 + Math.random() * (this.GROUND_Y - this.PIPE_GAP - 110);
+      this.pipes.push({ x: this.W + 8, gapY, passed: false });
+    }
+
+    // Move + score
+    for (const p of this.pipes) {
+      p.x -= this.PIPE_SPD;
+      if (!p.passed && p.x + this.PIPE_W < b.x) { p.passed = true; this.score++; }
+    }
+    this.pipes = this.pipes.filter(p => p.x > -this.PIPE_W - 10);
+
+    // Collisions
+    const r = 13;
+    if (b.y + r >= this.GROUND_Y || b.y - r <= 0) { this._die(); return; }
+    for (const p of this.pipes) {
+      if (b.x + r > p.x && b.x - r < p.x + this.PIPE_W) {
+        if (b.y - r < p.gapY || b.y + r > p.gapY + this.PIPE_GAP) { this._die(); return; }
+      }
+    }
+  }
+
+  async _die() {
+    this.state = 'dead';
+    if (this.score > this.best) {
+      this.best = this.score;
+      await saveFlappyScore(this.score);
+      renderFlappyLeaderboard();
+    }
+  }
+
+  _draw() {
+    const ctx = this.ctx, W = this.W, H = this.H;
+
+    // Sky
+    const sky = ctx.createLinearGradient(0, 0, 0, this.GROUND_Y);
+    sky.addColorStop(0, '#c8e6c9'); sky.addColorStop(1, '#f0faf0');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, this.GROUND_Y);
+
+    // Clouds
+    ctx.fillStyle = 'rgba(255,255,255,.75)';
+    this._cloud(55,  45, 32);
+    this._cloud(165, 28, 22);
+    this._cloud(235, 60, 18);
+
+    // Pipes
+    for (const p of this.pipes) this._pipe(p);
+
+    // Ground
+    ctx.fillStyle = '#2d5a2d';
+    ctx.fillRect(0, this.GROUND_Y, W, H - this.GROUND_Y);
+    ctx.fillStyle = '#3ED320';
+    ctx.fillRect(0, this.GROUND_Y, W, 7);
+    ctx.fillStyle = 'rgba(0,0,0,.15)';
+    for (let x = this.groundX; x < W; x += 40) ctx.fillRect(x, this.GROUND_Y + 10, 20, 4);
+
+    // Bird
+    this._bird();
+
+    // Score
+    if (this.state !== 'idle') {
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = 'bold 26px system-ui'; ctx.fillStyle = 'white';
+      ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 5;
+      ctx.fillText(this.score, W / 2, 40);
+      ctx.shadowBlur = 0;
+    }
+
+    // Overlay
+    if (this.state === 'idle') {
+      ctx.fillStyle = 'rgba(0,0,0,.38)'; ctx.fillRect(0, 0, W, H);
+      this._txt('Flappy Sprout 🌱', W/2, H/2 - 24, 'bold 18px system-ui', 'white');
+      this._txt('Tap or Space to play', W/2, H/2 + 8, '14px system-ui', 'rgba(255,255,255,.85)');
+      this._txt(`Best: ${this.best}`, W/2, H/2 + 32, '13px system-ui', '#3ED320');
+    }
+    if (this.state === 'dead') {
+      ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, 0, W, H);
+      this._txt('💥 Game Over', W/2, H/2 - 40, 'bold 20px system-ui', 'white');
+      this._txt(`Score: ${this.score}`, W/2, H/2 - 10, '16px system-ui', 'white');
+      this._txt(`Best: ${this.best}`, W/2, H/2 + 16, '14px system-ui', '#3ED320');
+      this._txt('Tap or Space to retry', W/2, H/2 + 44, '13px system-ui', 'rgba(255,255,255,.8)');
+    }
+  }
+
+  _cloud(x, y, r) {
+    const ctx = this.ctx;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.arc(x + r * .8, y - r * .3, r * .7, 0, Math.PI * 2);
+    ctx.arc(x + r * 1.5, y, r * .8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  _pipe(p) {
+    const ctx = this.ctx, x = p.x, w = this.PIPE_W, cap = 22, ext = 6;
+    // top
+    ctx.fillStyle = '#1B3A1B'; ctx.fillRect(x, 0, w, p.gapY - cap);
+    ctx.fillStyle = '#2d5a2d'; ctx.fillRect(x - ext, p.gapY - cap, w + ext * 2, cap);
+    // bottom
+    const bt = p.gapY + this.PIPE_GAP;
+    ctx.fillStyle = '#1B3A1B'; ctx.fillRect(x, bt + cap, w, this.GROUND_Y - bt - cap);
+    ctx.fillStyle = '#2d5a2d'; ctx.fillRect(x - ext, bt, w + ext * 2, cap);
+    // highlight
+    ctx.fillStyle = 'rgba(255,255,255,.09)';
+    ctx.fillRect(x + 5, 0, 6, p.gapY - cap);
+    ctx.fillRect(x + 5, bt + cap, 6, this.GROUND_Y - bt - cap);
+  }
+
+  _bird() {
+    const ctx = this.ctx, b = this.bird, sz = 32;
+    const wing = b.flap > 0 ? Math.sin(b.flap / 12 * Math.PI) : Math.sin(this._frame * 0.18) * 0.38;
+    ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot);
+    // left wing
+    ctx.save(); ctx.rotate(-wing * 0.65 - 0.2);
+    ctx.fillStyle = '#3ED320';
+    ctx.beginPath(); ctx.ellipse(-10, 3, 13, 5, -0.15, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // right wing
+    ctx.save(); ctx.rotate(wing * 0.65 + 0.2);
+    ctx.fillStyle = '#2db815';
+    ctx.beginPath(); ctx.ellipse(10, 3, 13, 5, 0.15, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // body
+    if (this.img.complete && this.img.naturalWidth > 0) {
+      ctx.drawImage(this.img, -sz / 2, -sz / 2, sz, sz);
+    } else {
+      ctx.fillStyle = '#1B3A1B'; ctx.beginPath(); ctx.arc(0, 0, sz / 2, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  _txt(text, x, y, font, color) {
+    const ctx = this.ctx;
+    ctx.font = font; ctx.fillStyle = color;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, y);
+  }
+
+  _tick() {
+    this._update(); this._draw();
+    this._raf = requestAnimationFrame(this._tick);
+  }
+
+  destroy() {
+    cancelAnimationFrame(this._raf);
+    if (this.canvas) {
+      this.canvas.removeEventListener('click',      this._input);
+      this.canvas.removeEventListener('touchstart', this._input);
+    }
+    document.removeEventListener('keydown', this._input);
+  }
+}
+
 // ─── Learner Dashboard ────────────────────────────────────────────────────────
 function renderLearnerDashboard() {
   setTitle('Dashboard');
@@ -3154,6 +3443,15 @@ function renderLearnerDashboard() {
       ${statCard('Avg Progress', avg, '%', '#3a7a3a', 2)}
     </div>
     ${teamWidget}
+    <p class="section-heading">🌱 Flappy Sprout</p>
+    <div class="flappy-card">
+      <canvas id="flappy-canvas" width="280" height="400" class="flappy-canvas"></canvas>
+      <div class="flappy-side">
+        <div class="flappy-lb-header">🏆 Top Scores</div>
+        <div id="flappy-lb" class="flappy-lb"></div>
+        <div class="flappy-hint">Tap canvas or press <kbd>Space</kbd> to flap</div>
+      </div>
+    </div>
     <p class="section-heading">Continue Learning</p>
     ${continueList.length ? `
       <div class="cl-grid">
@@ -3215,6 +3513,10 @@ function renderLearnerDashboard() {
   document.querySelectorAll('.stat-value[data-target]').forEach(el => {
     animateCount(el, parseInt(el.dataset.target));
   });
+
+  // Start Flappy game + render leaderboard
+  renderFlappyLeaderboard();
+  requestAnimationFrame(() => startFlappyGame());
 }
 
 // ─── Learner Library ──────────────────────────────────────────────────────────
