@@ -3141,10 +3141,10 @@ function destroyFlappy() {
 function startFlappyGame() {
   destroyFlappy();
   const myScore = flappyScores.find(r => r.userId === currentUser?.id)?.highScore || 0;
-  _flappyGame = new FlappyGame('flappy-canvas', myScore);
+  _flappyGame = new RunnerGame('flappy-canvas', myScore);
 }
 
-class FlappyGame {
+class RunnerGame {
   constructor(canvasId, bestScore = 0) {
     this.canvas = document.getElementById(canvasId);
     if (!this.canvas) return;
@@ -3155,19 +3155,21 @@ class FlappyGame {
     this.score  = 0;
     this.best   = bestScore;
     this._frame = 0;
+    this._dist  = 0;
 
-    // Bird
-    this.bird = { x: 72, y: this.H / 2, vy: 0, rot: 0, flap: 0 };
+    this.GROUND_Y = this.H - 58;
+    this.speed    = 3.8;
 
-    // Pipes
-    this.pipes      = [];
-    this.pipeTimer  = 0;
-    this.PIPE_INT   = 82;
-    this.PIPE_GAP   = 148;
-    this.PIPE_W     = 46;
-    this.PIPE_SPD   = 2.6;
-    this.GROUND_Y   = this.H - 52;
-    this.groundX    = 0;
+    // Runner character
+    this.runner = { x: 65, y: this.GROUND_Y, vy: 0, jumping: false, jumps: 0, leg: 0 };
+
+    // Obstacles + coins
+    this.obs      = [];
+    this.coins    = [];
+    this.obsTimer = 0;
+    this.coinTimer = 0;
+    this.groundX  = 0;
+    this.cloudX   = 0;
 
     // Sprite
     this.img = new Image();
@@ -3175,67 +3177,91 @@ class FlappyGame {
 
     // Input
     this._input = this._input.bind(this);
-    this.canvas.addEventListener('click',   this._input);
+    this.canvas.addEventListener('click',      this._input);
     this.canvas.addEventListener('touchstart', this._input, { passive: true });
-    document.addEventListener('keydown',    this._input);
+    document.addEventListener('keydown',       this._input);
 
-    // Loop
     this._tick = this._tick.bind(this);
     this._raf  = requestAnimationFrame(this._tick);
   }
 
   _input(e) {
-    if (e.type === 'keydown' && e.code !== 'Space') return;
+    if (e.type === 'keydown' && e.code !== 'Space' && e.code !== 'ArrowUp') return;
     if (e.type === 'keydown') e.preventDefault();
     if (this.state === 'idle' || this.state === 'dead') {
       this._reset(); this.state = 'playing';
-    } else {
-      this.bird.vy = -7.2; this.bird.flap = 12;
+    } else if (this.state === 'playing' && this.runner.jumps < 2) {
+      this.runner.vy = -11; this.runner.jumping = true; this.runner.jumps++;
     }
   }
 
   _reset() {
-    this.bird  = { x: 72, y: this.H / 2, vy: 0, rot: 0, flap: 0 };
-    this.pipes = []; this.pipeTimer = 0; this.score = 0; this._frame = 0;
+    this.runner   = { x: 65, y: this.GROUND_Y, vy: 0, jumping: false, jumps: 0, leg: 0 };
+    this.obs      = []; this.coins = [];
+    this.obsTimer = 0; this.coinTimer = 0;
+    this.score    = 0; this._frame = 0; this._dist = 0;
+    this.speed    = 3.8;
   }
 
   _update() {
     if (this.state !== 'playing') return;
     this._frame++;
-    const b = this.bird;
+    this._dist  += this.speed;
+    this.score   = Math.floor(this._dist / 8);
+    this.speed   = Math.min(9, 3.8 + Math.floor(this.score / 20) * 0.35);
+
+    const r = this.runner;
 
     // Physics
-    b.vy  += 0.44;
-    b.y   += b.vy;
-    b.rot  = Math.min(Math.PI / 2.2, Math.max(-Math.PI / 5, b.vy * 0.065));
-    if (b.flap > 0) b.flap--;
+    r.vy += 0.52;
+    r.y  += r.vy;
+    if (r.y >= this.GROUND_Y) {
+      r.y = this.GROUND_Y; r.vy = 0; r.jumping = false; r.jumps = 0;
+    }
+    if (!r.jumping) r.leg = (r.leg + 0.28) % (Math.PI * 2);
 
-    // Ground scroll
-    this.groundX = (this.groundX - this.PIPE_SPD + 40) % 40;
+    // Scroll
+    this.groundX = (this.groundX - this.speed + 60) % 60;
+    this.cloudX  = (this.cloudX  - this.speed * 0.25 + 400) % 400;
 
-    // Spawn pipes
-    this.pipeTimer++;
-    if (this.pipeTimer >= this.PIPE_INT) {
-      this.pipeTimer = 0;
-      const gapY = 55 + Math.random() * (this.GROUND_Y - this.PIPE_GAP - 110);
-      this.pipes.push({ x: this.W + 8, gapY, passed: false });
+    // Spawn obstacles — vary gap based on speed
+    this.obsTimer++;
+    const gap = Math.max(52, 88 - Math.floor(this.score / 15) * 3);
+    if (this.obsTimer >= gap) {
+      this.obsTimer = 0;
+      const h = 30 + Math.floor(Math.random() * 3) * 18; // 30, 48, or 66
+      this.obs.push({ x: this.W + 10, h });
     }
 
-    // Move + score
-    for (const p of this.pipes) {
-      p.x -= this.PIPE_SPD;
-      if (!p.passed && p.x + this.PIPE_W < b.x) { p.passed = true; this.score++; }
+    // Spawn coins above obstacles
+    this.coinTimer++;
+    if (this.coinTimer >= 38) {
+      this.coinTimer = 0;
+      this.coins.push({ x: this.W + 10, y: this.GROUND_Y - 55 - Math.random() * 45 });
     }
-    this.pipes = this.pipes.filter(p => p.x > -this.PIPE_W - 10);
 
-    // Collisions
-    const r = 13;
-    if (b.y + r >= this.GROUND_Y || b.y - r <= 0) { this._die(); return; }
-    for (const p of this.pipes) {
-      if (b.x + r > p.x && b.x - r < p.x + this.PIPE_W) {
-        if (b.y - r < p.gapY || b.y + r > p.gapY + this.PIPE_GAP) { this._die(); return; }
+    // Move + collide obstacles
+    for (const o of this.obs) o.x -= this.speed;
+    this.obs = this.obs.filter(o => o.x > -30);
+    for (const o of this.obs) {
+      if (this._hitObs(o)) { this._die(); return; }
+    }
+
+    // Move + collect coins
+    for (const c of this.coins) c.x -= this.speed;
+    for (const c of this.coins) {
+      if (!c.col && Math.abs(c.x - r.x) < 22 && Math.abs(c.y - (r.y - 30)) < 22) {
+        c.col = true; this.score += 3;
       }
     }
+    this.coins = this.coins.filter(c => c.x > -20 && !c.col);
+  }
+
+  _hitObs(o) {
+    const r = this.runner;
+    const rL = r.x - 12, rR = r.x + 12, rT = r.y - 34, rB = r.y - 2;
+    const oL = o.x - 14, oR = o.x + 14, oT = this.GROUND_Y - o.h, oB = this.GROUND_Y;
+    return rL < oR && rR > oL && rT < oB && rB > oT;
   }
 
   async _die() {
@@ -3252,100 +3278,96 @@ class FlappyGame {
 
     // Sky
     const sky = ctx.createLinearGradient(0, 0, 0, this.GROUND_Y);
-    sky.addColorStop(0, '#c8e6c9'); sky.addColorStop(1, '#f0faf0');
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, W, this.GROUND_Y);
+    sky.addColorStop(0, '#b2dfdb'); sky.addColorStop(1, '#e8f5e9');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, this.GROUND_Y);
 
     // Clouds
-    ctx.fillStyle = 'rgba(255,255,255,.75)';
-    this._cloud(55,  45, 32);
-    this._cloud(165, 28, 22);
-    this._cloud(235, 60, 18);
+    ctx.fillStyle = 'rgba(255,255,255,.8)';
+    const cx = this.cloudX;
+    this._cloud(cx % W, 38, 28);
+    this._cloud((cx + 160) % W, 22, 19);
+    this._cloud((cx + 270) % W, 50, 15);
 
-    // Pipes
-    for (const p of this.pipes) this._pipe(p);
+    // Obstacles
+    for (const o of this.obs) this._drawObs(o);
+
+    // Coins
+    for (const c of this.coins) {
+      ctx.fillStyle = '#FFD700';
+      ctx.beginPath(); ctx.arc(c.x, c.y, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.55)';
+      ctx.beginPath(); ctx.arc(c.x - 2, c.y - 2, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
 
     // Ground
-    ctx.fillStyle = '#2d5a2d';
-    ctx.fillRect(0, this.GROUND_Y, W, H - this.GROUND_Y);
-    ctx.fillStyle = '#3ED320';
-    ctx.fillRect(0, this.GROUND_Y, W, 7);
-    ctx.fillStyle = 'rgba(0,0,0,.15)';
-    for (let x = this.groundX; x < W; x += 40) ctx.fillRect(x, this.GROUND_Y + 10, 20, 4);
+    ctx.fillStyle = '#2d5a2d'; ctx.fillRect(0, this.GROUND_Y, W, H - this.GROUND_Y);
+    ctx.fillStyle = '#3ED320';  ctx.fillRect(0, this.GROUND_Y, W, 7);
+    ctx.fillStyle = 'rgba(0,0,0,.12)';
+    for (let x = this.groundX; x < W; x += 60) ctx.fillRect(x, this.GROUND_Y + 12, 28, 4);
 
-    // Bird
-    this._bird();
+    // Runner
+    this._drawRunner();
 
     // Score
     if (this.state !== 'idle') {
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.font = 'bold 26px system-ui'; ctx.fillStyle = 'white';
-      ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 5;
-      ctx.fillText(this.score, W / 2, 40);
+      ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      ctx.font = 'bold 20px system-ui'; ctx.fillStyle = 'white';
+      ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 4;
+      ctx.fillText(this.score, W - 14, 28);
+      ctx.font = '11px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.7)';
+      ctx.fillText(`spd ${Math.floor(this.speed * 10) / 10}`, W - 14, 44);
       ctx.shadowBlur = 0;
     }
 
-    // Overlay
+    // Overlays
     if (this.state === 'idle') {
-      ctx.fillStyle = 'rgba(0,0,0,.38)'; ctx.fillRect(0, 0, W, H);
-      this._txt('Flappy Sprout 🌱', W/2, H/2 - 24, 'bold 18px system-ui', 'white');
-      this._txt('Tap or Space to play', W/2, H/2 + 8, '14px system-ui', 'rgba(255,255,255,.85)');
-      this._txt(`Best: ${this.best}`, W/2, H/2 + 32, '13px system-ui', '#3ED320');
+      ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fillRect(0, 0, W, H);
+      this._txt('🌱 Sprout Runner', W/2, H/2 - 26, 'bold 19px system-ui', 'white');
+      this._txt('Tap / Space to start', W/2, H/2 + 8, '14px system-ui', 'rgba(255,255,255,.85)');
+      this._txt('Double-tap to double jump!', W/2, H/2 + 30, '12px system-ui', 'rgba(255,255,255,.6)');
+      this._txt(`Best: ${this.best}`, W/2, H/2 + 52, '13px system-ui', '#3ED320');
     }
     if (this.state === 'dead') {
       ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, 0, W, H);
-      this._txt('💥 Game Over', W/2, H/2 - 40, 'bold 20px system-ui', 'white');
-      this._txt(`Score: ${this.score}`, W/2, H/2 - 10, '16px system-ui', 'white');
-      this._txt(`Best: ${this.best}`, W/2, H/2 + 16, '14px system-ui', '#3ED320');
-      this._txt('Tap or Space to retry', W/2, H/2 + 44, '13px system-ui', 'rgba(255,255,255,.8)');
+      this._txt('💥 Ouch!', W/2, H/2 - 38, 'bold 20px system-ui', 'white');
+      this._txt(`Score: ${this.score}`, W/2, H/2 - 8, '16px system-ui', 'white');
+      this._txt(`Best: ${this.best}`, W/2, H/2 + 18, '14px system-ui', '#3ED320');
+      this._txt('Tap or Space to retry', W/2, H/2 + 46, '13px system-ui', 'rgba(255,255,255,.8)');
+    }
+  }
+
+  _drawObs(o) {
+    const ctx = this.ctx, x = o.x, y = this.GROUND_Y - o.h, w = 28;
+    // Stack of HR documents
+    ctx.fillStyle = '#1B3A1B'; ctx.fillRect(x - w/2, y, w, o.h);
+    ctx.fillStyle = '#2d5a2d'; ctx.fillRect(x - w/2, y, w, 7); // top cap
+    ctx.fillStyle = 'rgba(255,255,255,.13)';
+    for (let i = 13; i < o.h - 4; i += 9) ctx.fillRect(x - w/2 + 4, y + i, w - 8, 4);
+  }
+
+  _drawRunner() {
+    const ctx = this.ctx, r = this.runner, sz = 32;
+    const x = r.x, y = r.y;
+    // Legs
+    const swing = r.jumping ? 0 : Math.sin(r.leg) * 9;
+    ctx.fillStyle = '#1B3A1B';
+    ctx.fillRect(x - 8 + swing, y - 14, 7, 15);
+    ctx.fillRect(x + 1 - swing, y - 14, 7, 15);
+    // Body / sprite
+    if (this.img.complete && this.img.naturalWidth > 0) {
+      ctx.drawImage(this.img, x - sz/2, y - sz - 6, sz, sz);
+    } else {
+      ctx.fillStyle = '#1B3A1B'; ctx.beginPath(); ctx.arc(x, y - sz/2, sz/2, 0, Math.PI*2); ctx.fill();
     }
   }
 
   _cloud(x, y, r) {
     const ctx = this.ctx;
     ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.arc(x + r * .8, y - r * .3, r * .7, 0, Math.PI * 2);
-    ctx.arc(x + r * 1.5, y, r * .8, 0, Math.PI * 2);
+    ctx.arc(x, y, r, 0, Math.PI*2);
+    ctx.arc(x + r*.8, y - r*.3, r*.7, 0, Math.PI*2);
+    ctx.arc(x + r*1.5, y, r*.8, 0, Math.PI*2);
     ctx.fill();
-  }
-
-  _pipe(p) {
-    const ctx = this.ctx, x = p.x, w = this.PIPE_W, cap = 22, ext = 6;
-    // top
-    ctx.fillStyle = '#1B3A1B'; ctx.fillRect(x, 0, w, p.gapY - cap);
-    ctx.fillStyle = '#2d5a2d'; ctx.fillRect(x - ext, p.gapY - cap, w + ext * 2, cap);
-    // bottom
-    const bt = p.gapY + this.PIPE_GAP;
-    ctx.fillStyle = '#1B3A1B'; ctx.fillRect(x, bt + cap, w, this.GROUND_Y - bt - cap);
-    ctx.fillStyle = '#2d5a2d'; ctx.fillRect(x - ext, bt, w + ext * 2, cap);
-    // highlight
-    ctx.fillStyle = 'rgba(255,255,255,.09)';
-    ctx.fillRect(x + 5, 0, 6, p.gapY - cap);
-    ctx.fillRect(x + 5, bt + cap, 6, this.GROUND_Y - bt - cap);
-  }
-
-  _bird() {
-    const ctx = this.ctx, b = this.bird, sz = 32;
-    const wing = b.flap > 0 ? Math.sin(b.flap / 12 * Math.PI) : Math.sin(this._frame * 0.18) * 0.38;
-    ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot);
-    // left wing
-    ctx.save(); ctx.rotate(-wing * 0.65 - 0.2);
-    ctx.fillStyle = '#3ED320';
-    ctx.beginPath(); ctx.ellipse(-10, 3, 13, 5, -0.15, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-    // right wing
-    ctx.save(); ctx.rotate(wing * 0.65 + 0.2);
-    ctx.fillStyle = '#2db815';
-    ctx.beginPath(); ctx.ellipse(10, 3, 13, 5, 0.15, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-    // body
-    if (this.img.complete && this.img.naturalWidth > 0) {
-      ctx.drawImage(this.img, -sz / 2, -sz / 2, sz, sz);
-    } else {
-      ctx.fillStyle = '#1B3A1B'; ctx.beginPath(); ctx.arc(0, 0, sz / 2, 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.restore();
   }
 
   _txt(text, x, y, font, color) {
@@ -3355,10 +3377,7 @@ class FlappyGame {
     ctx.fillText(text, x, y);
   }
 
-  _tick() {
-    this._update(); this._draw();
-    this._raf = requestAnimationFrame(this._tick);
-  }
+  _tick() { this._update(); this._draw(); this._raf = requestAnimationFrame(this._tick); }
 
   destroy() {
     cancelAnimationFrame(this._raf);
@@ -3443,13 +3462,13 @@ function renderLearnerDashboard() {
       ${statCard('Avg Progress', avg, '%', '#3a7a3a', 2)}
     </div>
     ${teamWidget}
-    <p class="section-heading">🌱 Flappy Sprout</p>
+    <p class="section-heading">🌱 Sprout Runner</p>
     <div class="flappy-card">
-      <canvas id="flappy-canvas" width="280" height="400" class="flappy-canvas"></canvas>
+      <canvas id="flappy-canvas" width="300" height="300" class="flappy-canvas"></canvas>
       <div class="flappy-side">
         <div class="flappy-lb-header">🏆 Top Scores</div>
         <div id="flappy-lb" class="flappy-lb"></div>
-        <div class="flappy-hint">Tap canvas or press <kbd>Space</kbd> to flap</div>
+        <div class="flappy-hint">Tap / <kbd>Space</kbd> to jump &nbsp;·&nbsp; Double-tap = double jump</div>
       </div>
     </div>
     <p class="section-heading">Continue Learning</p>
