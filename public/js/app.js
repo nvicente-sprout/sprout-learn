@@ -3440,7 +3440,6 @@ function renderLearnerDashboard() {
   const rankSuffix  = n => ['','st','nd','rd'][n] || 'th';
 
   const teamWidget = myTeamData ? `
-    <p class="section-heading">Your Team</p>
     <div class="ld-team-card">
       <div class="ld-team-header">
         <div>

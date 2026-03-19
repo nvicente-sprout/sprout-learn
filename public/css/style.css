@@ -1518,8 +1518,8 @@ img { max-width: 100%; }
   padding: .5rem .85rem .5rem;
   margin-bottom: 0;
   animation: fadeUp .35s ease both;
-  width: 100%;
-  max-width: 320px;
+  flex: 1;
+  min-width: 0;
 }
 .ld-team-header {
   display: flex;
