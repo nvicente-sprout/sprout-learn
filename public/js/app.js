@@ -3481,21 +3481,6 @@ function renderLearnerDashboard() {
       ${statCard('Completed', done, '', '#2d5a2d', 1)}
       ${statCard('Avg Progress', avg, '%', '#3a7a3a', 2)}
     </div>
-    ${teamWidget}
-    <p class="section-heading">🏃 Sprout Runner</p>
-    <div class="flappy-card">
-      <canvas id="flappy-canvas" width="600" height="420" class="flappy-canvas"></canvas>
-      <div class="flappy-side">
-        <div class="flappy-lb-header">🏆 Top Scores</div>
-        <div id="flappy-lb" class="flappy-lb"></div>
-        <div class="flappy-char-picker">
-          <span style="font-size:.75rem;color:var(--text-muted);font-weight:600">Play as:</span>
-          <button class="char-btn ${getRunnerChar()==='boy'?'char-btn--active':''}" onclick="setRunnerChar('boy');destroyFlappy();requestAnimationFrame(()=>startFlappyGame())">👦 Boy</button>
-          <button class="char-btn ${getRunnerChar()==='girl'?'char-btn--active':''}" onclick="setRunnerChar('girl');destroyFlappy();requestAnimationFrame(()=>startFlappyGame())">👧 Girl</button>
-        </div>
-        <div class="flappy-hint">Tap / <kbd>Space</kbd> to jump &nbsp;·&nbsp; Tap twice = double jump</div>
-      </div>
-    </div>
     <p class="section-heading">Continue Learning</p>
     ${continueList.length ? `
       <div class="cl-grid">
@@ -3552,7 +3537,22 @@ function renderLearnerDashboard() {
           </div>
         </div>`;
       }).join('')}
-    </div>` : `<p style="color:var(--text-muted);font-size:.88rem">No completions yet.</p>`}`);
+    </div>` : `<p style="color:var(--text-muted);font-size:.88rem">No completions yet.</p>`}
+    <p class="section-heading">🏃 Sprout Runner</p>
+    <div class="flappy-card">
+      <canvas id="flappy-canvas" width="600" height="420" class="flappy-canvas"></canvas>
+      <div class="flappy-side">
+        <div class="flappy-lb-header">🏆 Top Scores</div>
+        <div id="flappy-lb" class="flappy-lb"></div>
+        <div class="flappy-char-picker">
+          <span style="font-size:.75rem;color:var(--text-muted);font-weight:600">Play as:</span>
+          <button class="char-btn ${getRunnerChar()==='boy'?'char-btn--active':''}" onclick="setRunnerChar('boy');destroyFlappy();requestAnimationFrame(()=>startFlappyGame())">👦 Boy</button>
+          <button class="char-btn ${getRunnerChar()==='girl'?'char-btn--active':''}" onclick="setRunnerChar('girl');destroyFlappy();requestAnimationFrame(()=>startFlappyGame())">👧 Girl</button>
+        </div>
+        <div class="flappy-hint">Tap / <kbd>Space</kbd> to jump &nbsp;·&nbsp; Tap twice = double jump</div>
+      </div>
+    </div>
+    ${teamWidget}`);
 
   document.querySelectorAll('.stat-value[data-target]').forEach(el => {
     animateCount(el, parseInt(el.dataset.target));
