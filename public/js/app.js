@@ -504,6 +504,7 @@ function subscribeRealtime() {
       if (!assignments[r.user_id].includes(r.course_id)) assignments[r.user_id].push(r.course_id);
       const hash = window.location.hash.slice(1);
       if (currentUser?.id === r.user_id && hash === '/learner/dashboard') renderLearnerDashboard();
+      if (currentUser?.id === r.user_id && hash === '/learner/library') renderLearnerLibrary();
       if (hash === '/admin/team') renderAdminTeam();
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'assignments' }, ({ old: r }) => {
@@ -511,6 +512,7 @@ function subscribeRealtime() {
         assignments[r.user_id] = assignments[r.user_id].filter(cid => cid !== r.course_id);
       const hash = window.location.hash.slice(1);
       if (currentUser?.id === r.user_id && hash === '/learner/dashboard') renderLearnerDashboard();
+      if (currentUser?.id === r.user_id && hash === '/learner/library') renderLearnerLibrary();
       if (hash === '/admin/team') renderAdminTeam();
     })
     .subscribe();
@@ -815,7 +817,7 @@ function openReportsUserPanel(userId) {
     if (!c) return '';
     const statusColor = p.completed ? '#2e7d32' : '#f57c00';
     const statusLabel = p.completed ? '✅ Completed' : p.currentSlide > 0 ? '🕐 In Progress' : '○ Not Started';
-    const pct = p.completed ? 100 : (c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0);
+    const pct = p.completed ? 100 : Math.min(80, c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0);
     return `<div class="sp-course-row">
       ${c.coverUrl ? `<img src="${c.coverUrl}" class="sp-course-thumb"/>` : `<div class="sp-course-thumb sp-course-thumb--placeholder">${CAT_EMOJI[c.category]||'📚'}</div>`}
       <div style="flex:1;min-width:0">
@@ -873,7 +875,7 @@ function openReportsCoursePanel(courseId) {
     const teamName = allTeams.find(t => t.id === u.teamId)?.name || '—';
     const statusColor = p.completed ? '#2e7d32' : '#f57c00';
     const statusLabel = p.completed ? '✅ Completed' : p.currentSlide > 0 ? '🕐 In Progress' : '○ Not Started';
-    const pct = p.completed ? 100 : (c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0);
+    const pct = p.completed ? 100 : Math.min(80, c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0);
     return `<div class="sp-course-row">
       ${avatarHTML(u, 36)}
       <div style="flex:1;min-width:0">
@@ -1016,6 +1018,7 @@ function renderAdminCourses(filterQ = '', filterCat = '') {
     <div class="course-grid">
       ${filtered.length ? filtered.map(c => adminCourseCard(c)).join('') : '<div class="empty-state"><span class="empty-icon">📭</span><h2>No courses found</h2><p>Try different filters.</p></div>'}
     </div>`);
+  if (filterQ) { const inp = document.getElementById('course-search'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
 }
 
 function courseCoverHTML(c) {
@@ -2109,9 +2112,10 @@ async function generateFromPastedText(courseId, courseTitle) {
 }
 
 // ─── Assign Modal ─────────────────────────────────────────────────────────────
-function showAssignModal(courseId) {
+function showAssignModal(courseId, filterTeamId = '') {
   const course = getCourse(courseId);
-  const allLearners = allUsers;
+  const visible = filterTeamId ? learners().filter(u => u.teamId === filterTeamId) : learners();
+  const teamTabs = [{ id: '', name: 'All' }, ...allTeams.map(t => ({ id: t.id, name: t.name }))];
   showModal(`
     <div class="modal" onclick="event.stopPropagation()">
       <div class="gmodal-header">
@@ -2119,12 +2123,15 @@ function showAssignModal(courseId) {
         <button class="gmodal-close" onclick="closeModal()">✕</button>
       </div>
       <div class="gmodal-body">
+        <div style="display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.75rem">
+          ${teamTabs.map(t => `<button class="btn btn-sm ${filterTeamId===t.id?'btn-primary':'btn-outline'}" onclick="showAssignModal('${courseId}','${t.id}')">${esc(t.name)}</button>`).join('')}
+        </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
-          <span style="font-size:.85rem;color:var(--text-muted)">Select team members</span>
-          <button class="btn btn-outline btn-sm" onclick="toggleAssignAll('${courseId}')">Assign All</button>
+          <span style="font-size:.85rem;color:var(--text-muted)">${visible.length} member${visible.length!==1?'s':''}</span>
+          <button class="btn btn-outline btn-sm" onclick="toggleAssignAll('${courseId}','${filterTeamId}')">Assign All</button>
         </div>
         <div class="assignee-list" id="assignee-list">
-          ${allLearners.map(u => `
+          ${visible.map(u => `
             <div class="assignee-item ${isAssigned(u.id,courseId)?'selected':''}" id="assignee-${u.id}" onclick="toggleAssignee('${u.id}','${courseId}')">
               <input type="checkbox" class="assignee-check" ${isAssigned(u.id,courseId)?'checked':''} />
               ${avatarHTML(u, 32)}
@@ -2198,9 +2205,10 @@ async function toggleAssignee(userId, courseId) {
   setTimeout(() => p.remove(), 480);
 }
 
-function toggleAssignAll(courseId) {
-  const allAssigned = allUsers.every(u => isAssigned(u.id, courseId));
-  allUsers.forEach(u => {
+function toggleAssignAll(courseId, filterTeamId = '') {
+  const targets = filterTeamId ? learners().filter(u => u.teamId === filterTeamId) : learners();
+  const allAssigned = targets.every(u => isAssigned(u.id, courseId));
+  targets.forEach(u => {
     if (!assignments[u.id]) assignments[u.id] = [];
     if (allAssigned) {
       assignments[u.id] = assignments[u.id].filter(cid => cid !== courseId);
@@ -2212,7 +2220,7 @@ function toggleAssignAll(courseId) {
         .then(({ error }) => { if (error) { console.error('Assignment insert:', error); toast('Failed to assign: ' + error.message, 'error'); } });
     }
   });
-  showAssignModal(courseId);
+  showAssignModal(courseId, filterTeamId);
 }
 
 // ─── Admin Team Progress ──────────────────────────────────────────────────────
@@ -2373,6 +2381,7 @@ function renderAdminTeam(filterTeam = '', filterCourse = '', searchQ = '', sortB
           ${u.id !== currentUser.id ? `<div style="margin-top:.5rem"><button class="btn btn-outline btn-sm" onclick="demoteUser('${u.id}')">⬇ Make Learner</button></div>` : '<div style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem">That\'s you</div>'}
         </div>`).join('')}
     </div>`);
+  if (searchQ) { const inp = document.querySelector('#main .toolbar-search input'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
 }
 
 async function promoteUser(userId) {
@@ -3602,6 +3611,7 @@ function renderLearnerLibrary(filterQ = '', filterCat = '', filterType = '') {
     <div class="course-grid">
       ${filtered.length ? filtered.map((c, i) => learnerCourseCard(c, uid, i)).join('') : '<div class="empty-state"><span class="empty-icon">📭</span><h2>No courses found</h2><p>Try different filters.</p></div>'}
     </div>`);
+  if (filterQ) { const inp = document.querySelector('#main .toolbar-search input'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
 }
 
 function learnerCourseCard(c, uid, i = 0) {
