@@ -2274,7 +2274,7 @@ function renderAdminTeam(filterTeam = '', filterCourse = '', searchQ = '', sortB
           </div>
           <div class="progress-bar-wrap"><div class="progress-bar" style="width:100%;background:${col}"></div></div>`;
       } else if (p.currentSlide > 0) {
-        const pct = c?.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0;
+        const pct = Math.min(80, c?.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0);
         progressBlock = `
           <div style="font-size:.8rem;color:var(--text-muted);margin:.4rem 0">In Progress · ${pct}%</div>
           <div class="progress-bar-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>`;
@@ -3003,7 +3003,7 @@ function renderReportsUser(userId) {
             if (!c) return '';
             const statusColor = p.completed ? '#2e7d32' : '#f57c00';
             const statusLabel = p.completed ? '✅ Completed' : p.currentSlide > 0 ? '🕐 In Progress' : '○ Not Started';
-            const pct = p.completed ? 100 : (c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0);
+            const pct = p.completed ? 100 : Math.min(80, c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0);
             return `<tr>
               <td>
                 <div style="display:flex;align-items:center;gap:.6rem">
@@ -3074,7 +3074,7 @@ function renderReportsCourse(courseId) {
             const teamName = allTeams.find(t => t.id === u.teamId)?.name || '—';
             const statusColor = p.completed ? '#2e7d32' : '#f57c00';
             const statusLabel = p.completed ? '✅ Completed' : p.currentSlide > 0 ? '🕐 In Progress' : '○ Not Started';
-            const pct = p.completed ? 100 : (c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0);
+            const pct = p.completed ? 100 : Math.min(80, c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0);
             return `<tr>
               <td>
                 <div style="display:flex;align-items:center;gap:.6rem">
@@ -3504,7 +3504,7 @@ function renderLearnerDashboard() {
         ${continueList.map((cid, i) => {
           const c = getCourse(cid); if (!c) return '';
           const p = getProgress(uid, cid);
-          const pct = c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0;
+          const pct = Math.min(80, c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0);
           const cover = c.coverUrl
             ? `<img src="${c.coverUrl}" alt="" />`
             : `<div class="cl-cover-placeholder">
@@ -3616,7 +3616,7 @@ function renderLearnerLibrary(filterQ = '', filterCat = '', filterType = '') {
 
 function learnerCourseCard(c, uid, i = 0) {
   const p      = getProgress(uid, c.id);
-  const pct    = c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0;
+  const pct    = p.completed ? 100 : Math.min(80, c.totalPages ? Math.round((p.currentSlide / c.totalPages) * 100) : 0);
   const qs     = questions[c.id];
   const assigned = isAssigned(uid, c.id);
   const label  = p.completed ? 'Review' : p.currentSlide > 0 ? 'Continue' : 'Start';
