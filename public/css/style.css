@@ -1795,12 +1795,160 @@ img { max-width: 100%; }
 .course-type-label { font-weight: 700; font-size: .88rem; color: var(--primary); }
 .course-type-desc  { font-size: .75rem; color: var(--text-muted); }
 
+/* ─── Learning Paths ──────────────────────────────────────────────────────── */
+.path-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1.25rem;
+}
+.path-card {
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  animation: fadeUp .35s ease both;
+}
+.path-card-header {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+.path-card-icon {
+  font-size: 1.75rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.path-card-info { flex: 1; min-width: 0; }
+.path-card-title {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.path-card-meta { font-size: .8rem; color: var(--text-muted); }
+.path-card-desc { font-size: .85rem; color: var(--text-muted); }
+.path-card-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .25rem; }
+
+.path-course-list {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  background: var(--bg);
+  border-radius: var(--radius);
+  padding: .6rem .75rem;
+}
+.path-course-item {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .83rem;
+  color: var(--text);
+}
+
+/* Path builder modal */
+.path-search-box {
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  max-height: 180px;
+  overflow-y: auto;
+}
+.path-search-item {
+  display: flex;
+  align-items: center;
+  padding: .55rem .75rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background .12s;
+}
+.path-search-item:last-child { border-bottom: none; }
+.path-search-item:hover { background: var(--bg); }
+.path-ordered-item {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .6rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: .35rem;
+}
+.path-step-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: .7rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Learner path steps */
+.path-steps { display: flex; flex-direction: column; gap: .45rem; }
+.path-step-row {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  padding: .55rem .7rem;
+  border-radius: var(--radius);
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+}
+.path-step-row.path-step-done { border-color: var(--accent-dark); background: #f0fff0; }
+.path-step-row.path-step-active { border-color: var(--primary-light); background: #e8f5e9; }
+.path-step-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: .75rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.path-step-row.path-step-done .path-step-badge { background: var(--accent-dark); }
+.path-step-row.path-step-active .path-step-badge { background: var(--primary-light); }
+.path-step-name { flex: 1; font-size: .88rem; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Assign row reuse */
+.assign-row {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  padding: .55rem .25rem;
+  border-bottom: 1px solid var(--border);
+}
+.assign-row:last-child { border-bottom: none; }
+.assign-avatar {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: .7rem;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.assign-name { flex: 1; font-size: .88rem; font-weight: 500; }
+
 /* ─── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 860px) {
   .header-nav { display: none; }
   .hamburger { display: flex !important; }
   .main-content { padding: 1.25rem 1rem 2rem; }
   .course-grid { grid-template-columns: 1fr; }
+  .path-grid { grid-template-columns: 1fr; }
   .member-grid { grid-template-columns: 1fr; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .topbar-name { display: none; }

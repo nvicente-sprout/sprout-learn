@@ -63,6 +63,8 @@ let scormZipData  = null; // { zip, launchFile, fileCount }
 let siteSettings  = { activeGame: 'sprout_runner' };
 let duckScores    = [];
 let _duckGame     = null;
+let learningPaths = [];
+let _pathCourseIds = []; // path builder state
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 async function loadNotifications() {
@@ -376,13 +378,14 @@ function courseToRow(c) {
 async function loadData() {
   showLoader('Loading Sprout Learn', 'Fetching your data');
   try {
-    const [cRes, qRes, aRes, pRes, uRes, tRes] = await Promise.all([
+    const [cRes, qRes, aRes, pRes, uRes, tRes, lpRes] = await Promise.all([
       sb.from('courses').select('*').order('created_at', { ascending: false }),
       sb.from('questions').select('*'),
       sb.from('assignments').select('*'),
       sb.from('progress').select('*'),
       sb.from('users').select('*').order('created_at', { ascending: true }),
       sb.from('teams').select('*').order('name'),
+      sb.from('learning_paths').select('*').order('created_at', { ascending: false }),
     ]);
 
     if (cRes.error) console.error('courses load error:', cRes.error.message);
@@ -396,6 +399,9 @@ async function loadData() {
           pData = pRes.data, uData = uRes.data;
 
     allTeams = tRes.data || [];
+    learningPaths = lpRes.data ? lpRes.data.map(r => ({
+      id: r.id, title: r.title, description: r.description || '', courseIds: r.course_ids || [],
+    })) : [];
 
     allUsers = uData ? uData.map((u, i) => ({
       id: u.id, email: u.email, name: u.name || u.email.split('@')[0],
@@ -678,6 +684,7 @@ function handleRoute() {
 
   if (hash === '/admin/dashboard')     renderAdminDashboard();
   else if (hash === '/admin/courses')  renderAdminCourses();
+  else if (hash === '/admin/paths')    renderAdminPaths();
   else if (hash === '/admin/team')      renderAdminTeam();
   else if (hash === '/admin/reports')   renderAdminReports();
   else if (hash.startsWith('/admin/reports/user/'))   renderReportsUser(hash.replace('/admin/reports/user/',''));
@@ -686,6 +693,7 @@ function handleRoute() {
   else if (hash === '/admin/settings')  renderAdminSettings();
   else if (hash === '/learner/dashboard')  renderLearnerDashboard();
   else if (hash === '/learner/library')    renderLearnerLibrary();
+  else if (hash === '/learner/paths')      renderLearnerPaths();
   else if (hash === '/learner/settings')   renderLearnerSettings();
   else if (hash === '/learner/leaderboard') renderLeaderboard(false);
   else navigate(currentUser.isAdmin ? '/admin/dashboard' : '/learner/dashboard');
@@ -770,15 +778,17 @@ function renderLayout() {
   const isAdmin = currentUser?.isAdmin && !adminViewingAsLearner;
   const unread = notifications.filter(n => !n.is_read).length;
   const navLinks = isAdmin ? [
-    { href: '/admin/dashboard',   label: 'Dashboard',     icon: iconHome() },
-    { href: '/admin/courses',     label: 'Courses',       icon: iconCourses() },
-    { href: '/admin/team',        label: 'Team Progress', icon: iconUsers() },
-    { href: '/admin/reports',     label: 'Reports',       icon: iconReport() },
-    { href: '/admin/leaderboard', label: 'Leaderboard',   icon: iconTrophy() },
-    { href: '/admin/settings',    label: 'Settings',      icon: iconSettings() },
+    { href: '/admin/dashboard',   label: 'Dashboard',       icon: iconHome() },
+    { href: '/admin/courses',     label: 'Courses',         icon: iconCourses() },
+    { href: '/admin/paths',       label: 'Learning Paths',  icon: iconBook() },
+    { href: '/admin/team',        label: 'Team Progress',   icon: iconUsers() },
+    { href: '/admin/reports',     label: 'Reports',         icon: iconReport() },
+    { href: '/admin/leaderboard', label: 'Leaderboard',     icon: iconTrophy() },
+    { href: '/admin/settings',    label: 'Settings',        icon: iconSettings() },
   ] : [
     { href: '/learner/dashboard',   label: 'Dashboard',      icon: iconHome() },
     { href: '/learner/library',     label: 'Course Library',  icon: iconCourses() },
+    { href: '/learner/paths',       label: 'Learning Paths',  icon: iconBook() },
     { href: '/learner/leaderboard', label: 'Leaderboard',     icon: iconTrophy() },
     { href: '/learner/settings',    label: 'Settings',        icon: iconSettings() },
   ];
@@ -4688,6 +4698,376 @@ function contentBadge(type) {
   const map = { pdf: ['badge-pdf','PDF Slides'], youtube: ['badge-video','Video'], slides: ['badge-slides','Slides'], scorm: ['badge-scorm','SCORM'], none: ['badge-none','Coming Soon'] };
   const [cls, label] = map[type] || map.none;
   return `<span class="badge ${cls}">${label}</span>`;
+}
+
+// ─── Learning Paths ───────────────────────────────────────────────────────────
+function getPath(id) { return learningPaths.find(p => p.id === id); }
+
+function renderAdminPaths() {
+  setTitle('Learning Paths');
+  setMain(`
+    <div class="page-header fade-up">
+      <div><h1>Learning Paths</h1><p>Bundle courses into structured learning journeys</p></div>
+      <button class="btn btn-primary" onclick="showCreatePathModal()">+ New Path</button>
+    </div>
+    ${learningPaths.length ? `
+      <div class="path-grid">
+        ${learningPaths.map(p => adminPathCard(p)).join('')}
+      </div>
+    ` : `
+      <div class="empty-state">
+        <span class="empty-icon">🛣️</span>
+        <h2>No learning paths yet</h2>
+        <p>Create your first path to bundle courses into a journey.</p>
+        <button class="btn btn-primary" style="margin-top:1rem" onclick="showCreatePathModal()">+ New Path</button>
+      </div>
+    `}
+  `);
+}
+
+function adminPathCard(path) {
+  const count = path.courseIds.length;
+  const preview = path.courseIds.slice(0, 3).map(id => getCourse(id)?.title).filter(Boolean);
+  return `
+    <div class="path-card fade-up">
+      <div class="path-card-header">
+        <div class="path-card-icon">🛣️</div>
+        <div class="path-card-info">
+          <div class="path-card-title">${esc(path.title)}</div>
+          <div class="path-card-meta">${count} course${count !== 1 ? 's' : ''}</div>
+        </div>
+      </div>
+      ${path.description ? `<div class="path-card-desc">${esc(path.description)}</div>` : ''}
+      ${preview.length ? `
+        <div class="path-course-list">
+          ${preview.map((n, i) => `<div class="path-course-item"><span class="path-step-num">${i+1}</span>${esc(n)}</div>`).join('')}
+          ${count > 3 ? `<div class="path-course-item" style="color:var(--text-muted)">+${count - 3} more…</div>` : ''}
+        </div>` : ''}
+      <div class="path-card-actions">
+        <button class="btn btn-outline btn-sm" onclick="showAssignPathModal('${path.id}')">👥 Assign</button>
+        <button class="btn btn-outline btn-sm" onclick="showEditPathModal('${path.id}')">✏️ Edit</button>
+        <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="deletePath('${path.id}')">🗑</button>
+      </div>
+    </div>`;
+}
+
+function showCreatePathModal() {
+  _pathCourseIds = [];
+  showModal(`
+    <div class="modal" onclick="event.stopPropagation()" style="max-width:600px;width:95vw">
+      <div class="modal-header">
+        <h3>New Learning Path</h3>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+        <div class="form-group">
+          <label class="form-label">Path Title *</label>
+          <input class="form-input" id="path-title" placeholder="e.g. TeamTailor Mastery" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea class="form-input" id="path-desc" rows="2" placeholder="What will learners achieve?"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Add Courses</label>
+          <input class="form-input" id="path-course-search" placeholder="Search courses…" oninput="renderPathCourseSearch()" style="margin-bottom:.6rem" />
+          <div id="path-search-results" class="path-search-box"></div>
+          <div id="path-selected-list" style="margin-top:.75rem"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveNewPath()">Create Path</button>
+      </div>
+    </div>
+  `);
+  renderPathCourseSearch();
+  renderPathSelectedList();
+}
+
+function showEditPathModal(pathId) {
+  const path = getPath(pathId);
+  if (!path) return;
+  _pathCourseIds = [...path.courseIds];
+  showModal(`
+    <div class="modal" onclick="event.stopPropagation()" style="max-width:600px;width:95vw">
+      <div class="modal-header">
+        <h3>Edit Learning Path</h3>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+        <div class="form-group">
+          <label class="form-label">Path Title *</label>
+          <input class="form-input" id="path-title" value="${esc(path.title)}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea class="form-input" id="path-desc" rows="2">${esc(path.description)}</textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Add Courses</label>
+          <input class="form-input" id="path-course-search" placeholder="Search courses…" oninput="renderPathCourseSearch()" style="margin-bottom:.6rem" />
+          <div id="path-search-results" class="path-search-box"></div>
+          <div id="path-selected-list" style="margin-top:.75rem"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveEditPath('${pathId}')">Save Changes</button>
+      </div>
+    </div>
+  `);
+  renderPathCourseSearch();
+  renderPathSelectedList();
+}
+
+function renderPathCourseSearch() {
+  const q = (document.getElementById('path-course-search')?.value || '').toLowerCase();
+  const available = courses.filter(c =>
+    !_pathCourseIds.includes(c.id) &&
+    (!q || c.title.toLowerCase().includes(q) || c.category.toLowerCase().includes(q))
+  );
+  const el = document.getElementById('path-search-results');
+  if (!el) return;
+  if (!available.length) {
+    el.innerHTML = `<div style="padding:.65rem 1rem;color:var(--text-muted);font-size:.85rem">${_pathCourseIds.length === courses.length ? 'All courses added' : 'No courses found'}</div>`;
+    return;
+  }
+  el.innerHTML = available.map(c => `
+    <div class="path-search-item" onclick="addCourseToPath('${c.id}')">
+      <span style="flex:1;font-size:.88rem">${esc(c.title)}</span>
+      <span style="font-size:.75rem;color:var(--text-muted);margin-right:.5rem">${esc(c.category)}</span>
+      <button class="btn btn-primary btn-sm" style="font-size:.75rem;padding:.2rem .6rem">+ Add</button>
+    </div>`).join('');
+}
+
+function renderPathSelectedList() {
+  const el = document.getElementById('path-selected-list');
+  if (!el) return;
+  if (!_pathCourseIds.length) {
+    el.innerHTML = `<div style="color:var(--text-muted);font-size:.85rem">No courses added yet.</div>`;
+    return;
+  }
+  el.innerHTML = `
+    <label class="form-label">Course Order</label>
+    <div>
+      ${_pathCourseIds.map((cid, i) => `
+        <div class="path-ordered-item">
+          <span class="path-step-num">${i + 1}</span>
+          <span style="flex:1;font-size:.88rem">${esc(getCourse(cid)?.title || cid)}</span>
+          <div style="display:flex;gap:.25rem">
+            ${i > 0 ? `<button class="btn btn-outline btn-sm" style="padding:.2rem .45rem" onclick="moveCourseInPath('${cid}',-1)">↑</button>` : ''}
+            ${i < _pathCourseIds.length - 1 ? `<button class="btn btn-outline btn-sm" style="padding:.2rem .45rem" onclick="moveCourseInPath('${cid}',1)">↓</button>` : ''}
+            <button class="btn btn-outline btn-sm" style="padding:.2rem .45rem;color:var(--danger)" onclick="removeCourseFromPath('${cid}')">✕</button>
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+function addCourseToPath(courseId) {
+  if (!_pathCourseIds.includes(courseId)) _pathCourseIds.push(courseId);
+  renderPathCourseSearch();
+  renderPathSelectedList();
+}
+
+function removeCourseFromPath(courseId) {
+  _pathCourseIds = _pathCourseIds.filter(id => id !== courseId);
+  renderPathCourseSearch();
+  renderPathSelectedList();
+}
+
+function moveCourseInPath(courseId, dir) {
+  const i = _pathCourseIds.indexOf(courseId);
+  if (i < 0) return;
+  const ni = i + dir;
+  if (ni < 0 || ni >= _pathCourseIds.length) return;
+  [_pathCourseIds[i], _pathCourseIds[ni]] = [_pathCourseIds[ni], _pathCourseIds[i]];
+  renderPathSelectedList();
+}
+
+async function saveNewPath() {
+  const title = document.getElementById('path-title')?.value.trim();
+  if (!title) { toast('Title is required', 'error'); return; }
+  const desc = document.getElementById('path-desc')?.value.trim() || '';
+  const id = 'p' + Date.now();
+  const { error } = await sb.from('learning_paths').insert({ id, title, description: desc, course_ids: _pathCourseIds });
+  if (error) { toast('Save failed: ' + error.message, 'error'); return; }
+  learningPaths.unshift({ id, title, description: desc, courseIds: [..._pathCourseIds] });
+  closeModal();
+  toast('Learning path created!');
+  renderAdminPaths();
+}
+
+async function saveEditPath(pathId) {
+  const title = document.getElementById('path-title')?.value.trim();
+  if (!title) { toast('Title is required', 'error'); return; }
+  const desc = document.getElementById('path-desc')?.value.trim() || '';
+  const { error } = await sb.from('learning_paths').update({ title, description: desc, course_ids: _pathCourseIds }).eq('id', pathId);
+  if (error) { toast('Save failed: ' + error.message, 'error'); return; }
+  const p = getPath(pathId);
+  if (p) { p.title = title; p.description = desc; p.courseIds = [..._pathCourseIds]; }
+  closeModal();
+  toast('Path updated!');
+  renderAdminPaths();
+}
+
+function deletePath(pathId) {
+  const path = getPath(pathId);
+  if (!path) return;
+  showModal(`
+    <div class="modal" onclick="event.stopPropagation()" style="max-width:380px">
+      <div class="modal-header"><h3>Delete Path</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+      <div class="modal-body"><p>Delete <strong>${esc(path.title)}</strong>? Individual course assignments won't be affected.</p></div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="confirmDeletePath('${pathId}')">Delete</button>
+      </div>
+    </div>`);
+}
+
+async function confirmDeletePath(pathId) {
+  const { error } = await sb.from('learning_paths').delete().eq('id', pathId);
+  if (error) { toast('Delete failed: ' + error.message, 'error'); return; }
+  learningPaths = learningPaths.filter(p => p.id !== pathId);
+  closeModal();
+  toast('Path deleted');
+  renderAdminPaths();
+}
+
+function showAssignPathModal(pathId) {
+  showAssignPathModalFiltered(pathId, '');
+}
+
+function showAssignPathModalFiltered(pathId, filterTeamId) {
+  const path = getPath(pathId);
+  if (!path) return;
+  const allLearners = learners();
+  const visible = filterTeamId ? allLearners.filter(u => u.teamId === filterTeamId) : allLearners;
+  const teamTabs = [{ id: '', name: 'All' }, ...allTeams.map(t => ({ id: t.id, name: t.name }))];
+  const allAssigned = visible.length > 0 && visible.every(u => path.courseIds.every(cid => isAssigned(u.id, cid)));
+
+  showModal(`
+    <div class="modal" onclick="event.stopPropagation()" style="max-width:460px;width:95vw">
+      <div class="modal-header">
+        <h3>Assign: ${esc(path.title)}</h3>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:.75rem">Assigns all ${path.courseIds.length} course${path.courseIds.length !== 1 ? 's' : ''} in this path.</p>
+        <div style="display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.75rem">
+          ${teamTabs.map(t => `<button class="btn btn-sm ${filterTeamId===t.id?'btn-primary':'btn-outline'}" onclick="showAssignPathModalFiltered('${pathId}','${t.id}')">${esc(t.name)}</button>`).join('')}
+        </div>
+        <div class="gmodal-list">
+          ${visible.length ? visible.map(u => {
+            const hasAll = path.courseIds.every(cid => isAssigned(u.id, cid));
+            return `<div class="assign-row">
+              <div class="assign-avatar" style="background:${u.color}">${initials(u.name)}</div>
+              <span class="assign-name">${esc(u.name)}</span>
+              <button class="btn btn-sm ${hasAll ? 'btn-outline' : 'btn-primary'}" onclick="togglePathAssign('${pathId}','${u.id}','${filterTeamId}')">
+                ${hasAll ? '✓ Assigned' : 'Assign'}
+              </button>
+            </div>`;
+          }).join('') : '<div style="padding:1rem;color:var(--text-muted);text-align:center">No learners in this group.</div>'}
+        </div>
+      </div>
+      <div class="modal-footer" style="justify-content:space-between">
+        <button class="btn btn-outline btn-sm" onclick="toggleAssignAllPath('${pathId}','${filterTeamId}')">${allAssigned ? 'Unassign All' : 'Assign All'}</button>
+        <button class="btn btn-outline" onclick="closeModal()">Done</button>
+      </div>
+    </div>`);
+}
+
+async function togglePathAssign(pathId, userId, filterTeamId) {
+  const path = getPath(pathId);
+  if (!path) return;
+  const hasAll = path.courseIds.every(cid => isAssigned(userId, cid));
+  if (hasAll) {
+    await Promise.all(path.courseIds.map(cid => sb.from('assignments').delete().eq('user_id', userId).eq('course_id', cid)));
+    path.courseIds.forEach(cid => { if (assignments[userId]) assignments[userId] = assignments[userId].filter(id => id !== cid); });
+  } else {
+    const toAssign = path.courseIds.filter(cid => !isAssigned(userId, cid));
+    await Promise.all(toAssign.map(cid => sb.from('assignments').upsert({ user_id: userId, course_id: cid })));
+    toAssign.forEach(cid => { if (!assignments[userId]) assignments[userId] = []; if (!assignments[userId].includes(cid)) assignments[userId].push(cid); });
+  }
+  showAssignPathModalFiltered(pathId, filterTeamId);
+}
+
+async function toggleAssignAllPath(pathId, filterTeamId) {
+  const path = getPath(pathId);
+  if (!path) return;
+  const targets = filterTeamId ? learners().filter(u => u.teamId === filterTeamId) : learners();
+  const allAssigned = targets.length > 0 && targets.every(u => path.courseIds.every(cid => isAssigned(u.id, cid)));
+  if (allAssigned) {
+    await Promise.all(targets.flatMap(u => path.courseIds.map(cid => sb.from('assignments').delete().eq('user_id', u.id).eq('course_id', cid))));
+    targets.forEach(u => { path.courseIds.forEach(cid => { if (assignments[u.id]) assignments[u.id] = assignments[u.id].filter(id => id !== cid); }); });
+  } else {
+    await Promise.all(targets.flatMap(u => path.courseIds.filter(cid => !isAssigned(u.id, cid)).map(cid => sb.from('assignments').upsert({ user_id: u.id, course_id: cid }))));
+    targets.forEach(u => { path.courseIds.forEach(cid => { if (!assignments[u.id]) assignments[u.id] = []; if (!assignments[u.id].includes(cid)) assignments[u.id].push(cid); }); });
+  }
+  showAssignPathModalFiltered(pathId, filterTeamId);
+}
+
+// ─── Learner Paths ────────────────────────────────────────────────────────────
+function renderLearnerPaths() {
+  setTitle('Learning Paths');
+  const uid = currentUser.id;
+  const myPaths = learningPaths.filter(p => p.courseIds.some(cid => isAssigned(uid, cid)));
+
+  if (!myPaths.length) {
+    setMain(`
+      <div class="page-header fade-up"><h1>Learning Paths</h1><p>Your structured learning journeys</p></div>
+      <div class="empty-state">
+        <span class="empty-icon">🛣️</span>
+        <h2>No learning paths assigned yet</h2>
+        <p>Your admin will assign you to a learning path soon.</p>
+      </div>`);
+    return;
+  }
+
+  setMain(`
+    <div class="page-header fade-up"><h1>Learning Paths</h1><p>Your structured learning journeys</p></div>
+    <div class="path-grid">
+      ${myPaths.map((p, i) => learnerPathCard(p, uid, i)).join('')}
+    </div>`);
+}
+
+function learnerPathCard(path, uid, i = 0) {
+  const assigned = path.courseIds.filter(cid => isAssigned(uid, cid));
+  const completed = assigned.filter(cid => getProgress(uid, cid).completed).length;
+  const total = assigned.length;
+  const pct = total ? Math.round((completed / total) * 100) : 0;
+  const allDone = completed === total && total > 0;
+
+  return `
+    <div class="path-card fade-up" style="animation-delay:${i * 0.05}s">
+      <div class="path-card-header">
+        <div class="path-card-icon">${allDone ? '✅' : '🛣️'}</div>
+        <div class="path-card-info">
+          <div class="path-card-title">${esc(path.title)}</div>
+          <div class="path-card-meta">${completed} of ${total} courses completed</div>
+        </div>
+        ${allDone ? '<span class="badge badge-done">✓ Done</span>' : ''}
+      </div>
+      ${path.description ? `<div class="path-card-desc">${esc(path.description)}</div>` : ''}
+      <div class="progress-bar-wrap" style="margin:.75rem 0">
+        <div class="progress-bar" style="width:${pct}%"></div>
+      </div>
+      <div class="path-steps">
+        ${assigned.map((cid, idx) => {
+          const c = getCourse(cid);
+          const p = getProgress(uid, cid);
+          const status = p.completed ? 'done' : p.currentSlide > 0 ? 'active' : 'todo';
+          const icon = p.completed ? '✓' : p.currentSlide > 0 ? '▶' : String(idx + 1);
+          const label = p.completed ? 'Review' : p.currentSlide > 0 ? 'Continue' : 'Start';
+          return `
+            <div class="path-step-row path-step-${status}">
+              <div class="path-step-badge">${icon}</div>
+              <div class="path-step-name">${esc(c?.title || cid)}</div>
+              <a href="#/course/${cid}" class="btn btn-sm ${p.completed ? 'btn-outline' : 'btn-primary'}" style="flex-shrink:0">${label}</a>
+            </div>`;
+        }).join('')}
+      </div>
+    </div>`;
 }
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
