@@ -59,6 +59,7 @@ let allTeams = [];
 let notifications = [];
 let flappyScores  = [];
 let _flappyGame   = null;
+let scormZipData  = null; // { zip, launchFile, fileCount }
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 async function loadNotifications() {
@@ -566,6 +567,22 @@ function subscribeRealtime() {
 }
 
 // ─── Router ───────────────────────────────────────────────────────────────────
+// ─── SCORM 1.2 postMessage Bridge ─────────────────────────────────────────────
+window.addEventListener('message', e => {
+  if (!e.data || e.data.type !== 'scorm12' || !viewerCourseId || !currentUser) return;
+  const { action, element: el, value: val } = e.data;
+  if (action === 'set') {
+    if (el === 'cmi.core.lesson_status' && (val === 'completed' || val === 'passed')) {
+      setProgress(currentUser.id, viewerCourseId, { completed: true, currentSlide: 1 });
+      toast('✅ Course completed!');
+    }
+    if (el === 'cmi.core.score.raw') {
+      const score = Math.round(parseFloat(val));
+      if (!isNaN(score)) setProgress(currentUser.id, viewerCourseId, { score });
+    }
+  }
+});
+
 window.addEventListener('hashchange', handleRoute);
 window.addEventListener('DOMContentLoaded', async () => {
   showLoader('Loading Sprout Learn', '');
@@ -1371,21 +1388,26 @@ async function submitUrlCourse() {
 
 // ─── Add SCORM Modal ──────────────────────────────────────────────────────────
 function showAddScormModal() {
+  scormZipData = null;
   showModal(`
     <div class="modal" onclick="event.stopPropagation()">
       <div class="gmodal-header">
-        <h2>Add SCORM Course</h2>
+        <h2>Upload SCORM Package</h2>
         <button class="gmodal-close" onclick="closeModal()">✕</button>
       </div>
       <div class="gmodal-body">
-        <div class="form-group">
-          <label class="form-label">SCORM Package URL *</label>
-          <input id="scorm-url" class="form-input" placeholder="https://yourhost.com/scorm/course/index.html" />
-          <div class="form-hint">Paste the URL to the SCORM package's index.html (must be hosted and publicly accessible)</div>
+        <div class="upload-file-box" onclick="document.getElementById('scorm-zip-input').click()" style="margin-bottom:1rem">
+          <input type="file" id="scorm-zip-input" accept=".zip" style="display:none" onchange="handleScormZip(this.files[0])" />
+          <div style="font-size:2rem">📦</div>
+          <p style="margin:.25rem 0 0;font-size:.85rem">Click to select SCORM .zip file</p>
+        </div>
+        <div id="scorm-file-info" style="display:none;background:#f1f8f1;border-radius:8px;padding:.6rem .85rem;margin-bottom:.75rem;font-size:.82rem">
+          <div id="scorm-file-name" style="font-weight:700;color:var(--primary)"></div>
+          <div id="scorm-file-stats" style="color:var(--text-muted);margin-top:.15rem"></div>
         </div>
         <div class="form-group">
           <label class="form-label">Course Title *</label>
-          <input id="scorm-title" class="form-input" placeholder="Enter course title" />
+          <input id="scorm-title" class="form-input" placeholder="Auto-filled from package" />
         </div>
         <div class="form-group">
           <label class="form-label">Description</label>
@@ -1406,38 +1428,118 @@ function showAddScormModal() {
       </div>
       <div class="gmodal-footer">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="submitScormCourse()">Add SCORM Course</button>
+        <button class="btn btn-primary" id="scorm-submit-btn" onclick="submitScormUpload()" disabled>Upload</button>
       </div>
     </div>`);
 }
 
-async function submitScormCourse() {
-  const scormUrl = document.getElementById('scorm-url')?.value.trim();
-  const title    = document.getElementById('scorm-title')?.value.trim();
-  if (!scormUrl) { toast('Please enter a SCORM URL', 'error'); return; }
-  if (!title)    { toast('Please enter a course title', 'error'); return; }
+async function handleScormZip(file) {
+  if (!file) return;
+  try {
+    const zip = await JSZip.loadAsync(file);
+
+    // Parse imsmanifest.xml
+    const manifestFile = zip.file('imsmanifest.xml') ||
+      Object.values(zip.files).find(f => f.name.toLowerCase().endsWith('imsmanifest.xml'));
+
+    let launchFile = 'index.html';
+    let titleFromManifest = '';
+
+    if (manifestFile) {
+      const xml = new DOMParser().parseFromString(await manifestFile.async('string'), 'text/xml');
+      titleFromManifest = xml.querySelector('title')?.textContent?.trim() || '';
+      const sco = xml.querySelector('resource[type*="sco"], resource[type*="SCO"], resource[href]');
+      if (sco) launchFile = (sco.getAttribute('href') || 'index.html').split('?')[0].split('#')[0];
+    }
+
+    const fileCount = Object.values(zip.files).filter(f => !f.dir).length;
+    scormZipData = { zip, launchFile, fileCount };
+
+    document.getElementById('scorm-file-info').style.display = '';
+    document.getElementById('scorm-file-name').textContent = file.name;
+    document.getElementById('scorm-file-stats').textContent = `${fileCount} files · Launch: ${launchFile}`;
+    if (titleFromManifest) document.getElementById('scorm-title').value = titleFromManifest;
+    document.getElementById('scorm-submit-btn').disabled = false;
+  } catch (err) {
+    toast('Could not read zip: ' + err.message, 'error');
+  }
+}
+
+async function submitScormUpload() {
+  if (!scormZipData) { toast('Please select a SCORM zip file', 'error'); return; }
+  const title = document.getElementById('scorm-title')?.value.trim();
+  if (!title) { toast('Please enter a course title', 'error'); return; }
   const cat  = document.getElementById('scorm-cat')?.value || CATEGORIES[0];
   const type = document.getElementById('scorm-type')?.value || 'Free';
   const desc = document.getElementById('scorm-desc')?.value.trim() || '';
 
-  const newCourse = {
-    id: nextCourseId(), title, description: desc, category: cat, type,
-    contentType: 'scorm', scormUrl, totalPages: 0,
-    pdfDataUrl: null, youtubeId: null, slidesUrl: null, coverUrl: null,
-  };
   closeModal();
-  showLoader('Adding course', 'Saving to database…');
-  courses.unshift(newCourse);
-  const { error } = await sb.from('courses').upsert(courseToRow(newCourse));
-  hideLoader();
-  if (error) {
-    toast(`Save failed: ${error.message}`, 'error');
-    courses.shift();
-  } else {
-    toast('✅ SCORM course added!');
-    createNotif(null, 'new_course', `🌱 New course added: ${title}`, cat);
+
+  const courseId = nextCourseId();
+  const basePath = `scorm/${courseId}`;
+
+  // Inline SCORM 1.2 shim — intercepts API calls and relays via postMessage
+  const shimScript = `<script>(function(){var d={};window.API={LMSInitialize:function(){window.parent.postMessage({type:'scorm12',action:'init'},'*');return'true'},LMSFinish:function(){window.parent.postMessage({type:'scorm12',action:'finish',data:d},'*');return'true'},LMSGetValue:function(e){return d[e]||''},LMSSetValue:function(e,v){d[e]=v;window.parent.postMessage({type:'scorm12',action:'set',element:e,value:v},'*');return'true'},LMSCommit:function(){window.parent.postMessage({type:'scorm12',action:'commit',data:d},'*');return'true'},LMSGetLastError:function(){return'0'},LMSGetErrorString:function(){return''},LMSGetDiagnostic:function(){return''}};})();<\/script>`;
+
+  showLoader('Uploading SCORM', `Uploading ${scormZipData.fileCount} files…`);
+
+  try {
+    const { zip, launchFile } = scormZipData;
+    const files = Object.values(zip.files).filter(f => !f.dir);
+
+    // Upload in batches of 5
+    for (let i = 0; i < files.length; i += 5) {
+      await Promise.all(files.slice(i, i + 5).map(async zipFile => {
+        const isLaunch = zipFile.name === launchFile || zipFile.name.endsWith('/' + launchFile);
+        let content;
+        if (isLaunch) {
+          let html = await zipFile.async('string');
+          html = html.includes('<head>') ? html.replace('<head>', '<head>' + shimScript)
+               : html.includes('<html>') ? html.replace('<html>', '<html><head>' + shimScript + '</head>')
+               : shimScript + html;
+          content = new Blob([html], { type: 'text/html' });
+        } else {
+          content = await zipFile.async('blob');
+        }
+        const { error } = await sb.storage.from('course-files')
+          .upload(`${basePath}/${zipFile.name}`, content, { upsert: true, contentType: scormContentType(zipFile.name) });
+        if (error) console.warn('SCORM file upload error:', zipFile.name, error.message);
+      }));
+    }
+
+    const { data: { publicUrl } } = sb.storage.from('course-files').getPublicUrl(`${basePath}/${launchFile}`);
+
+    const newCourse = {
+      id: courseId, title, description: desc, category: cat, type,
+      contentType: 'scorm', scormUrl: publicUrl, totalPages: 0,
+      pdfDataUrl: null, youtubeId: null, slidesUrl: null, coverUrl: null,
+    };
+    courses.unshift(newCourse);
+    const { error: dbError } = await sb.from('courses').upsert(courseToRow(newCourse));
+    hideLoader();
+    if (dbError) {
+      toast(`Save failed: ${dbError.message}`, 'error');
+      courses.shift();
+    } else {
+      scormZipData = null;
+      toast('✅ SCORM course uploaded!');
+      createNotif(null, 'new_course', `🌱 New course added: ${title}`, cat);
+      renderAdminCourses();
+    }
+  } catch (err) {
+    hideLoader();
+    toast(`Upload failed: ${err.message}`, 'error');
+    console.error('SCORM upload error:', err);
   }
-  renderAdminCourses();
+}
+
+function scormContentType(filename) {
+  const ext = (filename.split('.').pop() || '').toLowerCase();
+  return ({ html:'text/html', htm:'text/html', js:'application/javascript', css:'text/css',
+    xml:'application/xml', json:'application/json', png:'image/png', jpg:'image/jpeg',
+    jpeg:'image/jpeg', gif:'image/gif', svg:'image/svg+xml', webp:'image/webp',
+    mp4:'video/mp4', mp3:'audio/mpeg', wav:'audio/wav',
+    woff:'font/woff', woff2:'font/woff2', ttf:'font/ttf' })[ext] || 'application/octet-stream';
 }
 
 // ─── Upload PDF Modal ─────────────────────────────────────────────────────────
@@ -3800,7 +3902,7 @@ async function renderCourseViewer(courseId) {
           <button class="viewer-btn" id="viewer-next" onclick="pdfNextPage()">Next →</button>
         </div>` : course.contentType === 'scorm' ? `
         <div class="viewer-bottombar" style="justify-content:center;gap:1rem">
-          <button class="viewer-btn accent" onclick="markScormComplete('${courseId}')">✅ Mark as Complete</button>
+          <span style="font-size:.82rem;color:var(--text-muted)">Progress tracked automatically</span>
           ${questions[courseId] ? `<button class="viewer-btn accent" onclick="navigate('/assessment/${courseId}')">📝 Take Assessment</button>` : ''}
         </div>` : `
         <div class="viewer-bottombar" style="justify-content:center">
@@ -3835,7 +3937,7 @@ function viewerBodyHTML(course) {
     const embedId = (course.slidesUrl || '').match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1] || '';
     return `<div class="viewer-youtube"><iframe src="https://docs.google.com/presentation/d/${esc(embedId)}/embed?start=false&loop=false&delayms=3000" allowfullscreen></iframe></div>`;
   } else if (course.contentType === 'scorm') {
-    return `<div class="viewer-youtube"><iframe src="${esc(course.scormUrl)}" allowfullscreen allow="fullscreen"></iframe></div>`;
+    return `<div class="viewer-youtube"><iframe id="scorm-iframe" src="${esc(course.scormUrl)}" allowfullscreen allow="fullscreen; autoplay" style="width:100%;height:100%;border:none"></iframe></div>`;
   } else {
     return `<div class="viewer-no-content">
       <span class="big-icon">📚</span>
