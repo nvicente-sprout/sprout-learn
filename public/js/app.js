@@ -60,6 +60,9 @@ let notifications = [];
 let flappyScores  = [];
 let _flappyGame   = null;
 let scormZipData  = null; // { zip, launchFile, fileCount }
+let siteSettings  = { activeGame: 'sprout_runner' };
+let duckScores    = [];
+let _duckGame     = null;
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 async function loadNotifications() {
@@ -419,10 +422,26 @@ async function loadData() {
         score: r.score, passed: r.passed,
       };
     });
+    await loadSiteSettings();
   } catch (err) {
     console.error('loadData exception:', err);
   }
   hideLoader();
+}
+
+async function loadSiteSettings() {
+  try {
+    const { data: { publicUrl } } = sb.storage.from('course-files').getPublicUrl('config/site_settings.json');
+    const res = await fetch(publicUrl + '?t=' + Date.now());
+    if (res.ok) siteSettings = await res.json();
+  } catch {}
+}
+
+async function saveSiteSettings() {
+  const blob = new Blob([JSON.stringify(siteSettings)], { type: 'application/json' });
+  const { error } = await sb.storage.from('course-files').upload('config/site_settings.json', blob, { upsert: true, contentType: 'application/json' });
+  if (error) { toast('Failed to save setting: ' + error.message, 'error'); return false; }
+  return true;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -476,6 +495,13 @@ async function handleAuthUser(authUser) {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'flappy_scores' }, async () => {
       await loadFlappyScores();
       renderFlappyLeaderboard();
+    })
+    .subscribe();
+  loadDuckScores();
+  sb.channel('duck_scores_rt')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'duck_hunt_scores' }, async () => {
+      await loadDuckScores();
+      renderDuckLeaderboard();
     })
     .subscribe();
   if (!currentUser.teamId) { renderCompleteProfile(); return; }
@@ -622,6 +648,7 @@ function handleRoute() {
   const hash = window.location.hash.slice(1) || '/login';
   currentRoute = hash;
   destroyFlappy();
+  destroyDuck();
 
   if (!currentUser && hash !== '/login') {
     navigate('/login');
@@ -2622,6 +2649,27 @@ function renderAdminSettings() {
     </div>
 
     <div class="settings-section" style="margin-top:2rem">
+      <h2 class="section-heading">🎮 Active Game</h2>
+      <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:.75rem">Choose which game appears on the learner dashboard</p>
+      <div class="settings-list">
+        <div class="settings-list-item">
+          <div>
+            <div style="font-weight:600">🏃 Sprout Runner</div>
+            <div style="font-size:.78rem;color:var(--text-muted)">Side-scrolling obstacle runner</div>
+          </div>
+          <input type="radio" name="active-game" value="sprout_runner" ${(siteSettings.activeGame||'sprout_runner')==='sprout_runner'?'checked':''} onchange="setActiveGame('sprout_runner')" style="width:18px;height:18px;cursor:pointer" />
+        </div>
+        <div class="settings-list-item">
+          <div>
+            <div style="font-weight:600">🦆 Duck Hunt</div>
+            <div style="font-size:.78rem;color:var(--text-muted)">Click to shoot ducks — 30 seconds</div>
+          </div>
+          <input type="radio" name="active-game" value="duck_hunt" ${siteSettings.activeGame==='duck_hunt'?'checked':''} onchange="setActiveGame('duck_hunt')" style="width:18px;height:18px;cursor:pointer" />
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section" style="margin-top:2rem">
       <h2 class="section-heading">User Access</h2>
       <div class="settings-list">
         ${allUsers.map(u => {
@@ -2643,6 +2691,12 @@ function renderAdminSettings() {
         }).join('')}
       </div>
     </div>`);
+}
+
+async function setActiveGame(game) {
+  siteSettings.activeGame = game;
+  const ok = await saveSiteSettings();
+  if (ok) toast(`✅ Active game set to ${game === 'duck_hunt' ? 'Duck Hunt' : 'Sprout Runner'}`);
 }
 
 function showAddTeamModal() {
@@ -3588,6 +3642,334 @@ class RunnerGame {
   }
 }
 
+// ─── Duck Hunt ────────────────────────────────────────────────────────────────
+async function loadDuckScores() {
+  try {
+    const { data } = await sb.from('duck_hunt_scores')
+      .select('user_id, high_score')
+      .order('high_score', { ascending: false })
+      .limit(10);
+    if (data) {
+      duckScores = data.map(r => {
+        const u = getUser(r.user_id);
+        return { userId: r.user_id, name: u?.name || 'Unknown', color: u?.color || '#ccc', avatarUrl: u?.avatarUrl || null, highScore: r.high_score };
+      });
+    }
+  } catch {}
+}
+
+async function saveDuckScore(score) {
+  try {
+    const { error } = await sb.from('duck_hunt_scores').upsert(
+      { user_id: currentUser.id, high_score: score, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' }
+    );
+    if (error) { console.error('duck save error:', error); return; }
+    await loadDuckScores();
+  } catch(e) { console.error('duck save exception:', e); }
+}
+
+function renderDuckLeaderboard() {
+  const el = document.getElementById('duck-lb');
+  if (!el) return;
+  const myId = currentUser?.id;
+  if (!duckScores.length) { el.innerHTML = `<div class="flappy-lb-empty">No scores yet — be the first! 🏆</div>`; return; }
+  el.innerHTML = duckScores.slice(0, 5).map((r, i) => {
+    const medals = ['🥇','🥈','🥉'];
+    const isMe = r.userId === myId;
+    const avatar = r.avatarUrl
+      ? `<img src="${r.avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block"/>`
+      : initials(r.name);
+    return `<div class="flappy-lb-row${isMe?' flappy-lb-row--me':''}">
+      <div class="flappy-lb-rank">${medals[i] || `#${i+1}`}</div>
+      <div class="user-avatar" style="background:${r.color};width:28px;height:28px;font-size:.6rem;flex-shrink:0">${avatar}</div>
+      <div class="flappy-lb-name">${esc(r.name)}${isMe?'<span class="ld-you-badge" style="margin-left:.3rem">You</span>':''}</div>
+      <div class="flappy-lb-score">${r.highScore}</div>
+    </div>`;
+  }).join('');
+}
+
+function destroyDuck() {
+  if (_duckGame) { _duckGame.destroy(); _duckGame = null; }
+}
+
+function startDuckHunt() {
+  destroyDuck();
+  const myScore = duckScores.find(r => r.userId === currentUser?.id)?.highScore || 0;
+  _duckGame = new DuckHuntGame('duck-canvas', myScore);
+}
+
+class DuckHuntGame {
+  constructor(canvasId, bestScore = 0) {
+    this.canvas = document.getElementById(canvasId);
+    if (!this.canvas) return;
+    this.ctx    = this.canvas.getContext('2d');
+    this.W      = this.canvas.width;
+    this.H      = this.canvas.height;
+    this.state  = 'idle';
+    this.score  = 0;
+    this.best   = bestScore;
+    this.ducks  = [];
+    this.shots  = [];
+    this.spawnTimer  = 0;
+    this.timeLeft    = 30;
+    this._frameCount = 0;
+    this._lastSec    = 0;
+    this.crosshair   = { x: -200, y: -200 };
+
+    this._onMove  = this._onMove.bind(this);
+    this._onClick = this._onClick.bind(this);
+    this._onTouch = this._onTouch.bind(this);
+    this._tick    = this._tick.bind(this);
+
+    this.canvas.addEventListener('mousemove',  this._onMove);
+    this.canvas.addEventListener('click',      this._onClick);
+    this.canvas.addEventListener('touchstart', this._onTouch, { passive: false });
+    this._raf = requestAnimationFrame(this._tick);
+  }
+
+  _onMove(e) {
+    const r = this.canvas.getBoundingClientRect();
+    this.crosshair.x = (e.clientX - r.left) * (this.W / r.width);
+    this.crosshair.y = (e.clientY - r.top)  * (this.H / r.height);
+  }
+
+  _onTouch(e) {
+    e.preventDefault();
+    const r = this.canvas.getBoundingClientRect();
+    const t = e.touches[0];
+    const x = (t.clientX - r.left) * (this.W / r.width);
+    const y = (t.clientY - r.top)  * (this.H / r.height);
+    this.crosshair = { x, y };
+    if (this.state === 'idle' || this.state === 'done') { this._reset(); this.state = 'playing'; }
+    else this._shoot(x, y);
+  }
+
+  _onClick(e) {
+    const r  = this.canvas.getBoundingClientRect();
+    const x  = (e.clientX - r.left) * (this.W / r.width);
+    const y  = (e.clientY - r.top)  * (this.H / r.height);
+    if (this.state === 'idle' || this.state === 'done') { this._reset(); this.state = 'playing'; return; }
+    this._shoot(x, y);
+  }
+
+  _shoot(x, y) {
+    if (this.state !== 'playing') return;
+    let hit = false;
+    for (const d of this.ducks) {
+      if (d.state !== 'alive') continue;
+      if (Math.hypot(x - d.x, y - d.y) < d.r + 8) {
+        d.state = 'falling'; d.fallVy = -4;
+        this.score += d.pts;
+        this.shots.push({ x: d.x, y: d.y - 20, text: `+${d.pts}`, timer: 45 });
+        hit = true; break;
+      }
+    }
+    if (!hit) this.shots.push({ x, y, text: '✗', timer: 22, miss: true });
+  }
+
+  _reset() {
+    this.ducks = []; this.shots = [];
+    this.spawnTimer = 0; this.score = 0;
+    this.timeLeft = 30; this._frameCount = 0; this._lastSec = 0;
+  }
+
+  _spawnDuck() {
+    const small   = Math.random() < 0.35;
+    const r       = small ? 13 : 22;
+    const pts     = small ? 25 : 10;
+    const spd     = small ? 2.8 + Math.random() * 1.8 : 1.6 + Math.random() * 1.4;
+    const fromL   = Math.random() > 0.5;
+    const x       = fromL ? -50 : this.W + 50;
+    const y       = 50 + Math.random() * (this.H - 180);
+    const vx      = fromL ? spd : -spd;
+    const vy      = (Math.random() - 0.5) * 1.2;
+    const colors  = ['#8B4513','#556B2F','#4B0082','#8B0000','#005f73'];
+    this.ducks.push({ x, y, vx, vy, r, pts, state: 'alive', fallVy: 0,
+      wing: Math.random() * Math.PI * 2, color: colors[Math.floor(Math.random()*colors.length)] });
+  }
+
+  _update() {
+    if (this.state !== 'playing') return;
+    this._frameCount++;
+
+    const secs = Math.floor(this._frameCount / 60);
+    if (secs > this._lastSec) {
+      this._lastSec = secs;
+      this.timeLeft = Math.max(0, 30 - secs);
+      if (this.timeLeft <= 0) { this._endGame(); return; }
+    }
+
+    this.spawnTimer++;
+    const interval = Math.max(45, 90 - Math.floor((30 - this.timeLeft) * 2));
+    if (this.spawnTimer >= interval && this.ducks.filter(d => d.state === 'alive').length < 6) {
+      this.spawnTimer = 0;
+      this._spawnDuck();
+    }
+
+    for (const d of this.ducks) {
+      if (d.state === 'alive') {
+        d.x += d.vx; d.y += d.vy; d.wing += 0.28;
+        if (d.y < 35)         { d.y = 35;         d.vy =  Math.abs(d.vy); }
+        if (d.y > this.H-140) { d.y = this.H-140; d.vy = -Math.abs(d.vy); }
+        if (d.x < -80 || d.x > this.W + 80) d.state = 'gone';
+      } else if (d.state === 'falling') {
+        d.fallVy += 0.45; d.y += d.fallVy; d.wing += 0.08;
+        if (d.y > this.H) d.state = 'gone';
+      }
+    }
+    this.ducks = this.ducks.filter(d => d.state !== 'gone');
+    for (const s of this.shots) { s.timer--; s.y -= 0.6; }
+    this.shots = this.shots.filter(s => s.timer > 0);
+  }
+
+  async _endGame() {
+    this.state = 'done';
+    if (this.score > this.best) {
+      this.best = this.score;
+      await saveDuckScore(this.score);
+      renderDuckLeaderboard();
+    }
+  }
+
+  _draw() {
+    const ctx = this.ctx, W = this.W, H = this.H;
+
+    // Sky
+    const sky = ctx.createLinearGradient(0, 0, 0, H - 80);
+    sky.addColorStop(0, '#5ba3d9'); sky.addColorStop(1, '#c8e8f8');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H - 80);
+
+    // Clouds
+    ctx.fillStyle = 'rgba(255,255,255,.82)';
+    this._cloud(80, 48, 38); this._cloud(260, 28, 26); this._cloud(430, 52, 32); this._cloud(560, 32, 22);
+
+    // Ducks
+    for (const d of this.ducks) this._drawDuck(d);
+
+    // Floating score texts
+    for (const s of this.shots) {
+      ctx.globalAlpha = Math.min(1, s.timer / (s.miss ? 22 : 45));
+      ctx.font = `bold ${s.miss ? 15 : 19}px system-ui`;
+      ctx.fillStyle = s.miss ? '#ef5350' : '#FFD700';
+      ctx.textAlign = 'center'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 4;
+      ctx.fillText(s.text, s.x, s.y);
+      ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+    }
+
+    // Ground / trees
+    ctx.fillStyle = '#2d5a2d'; ctx.fillRect(0, H - 80, W, 80);
+    ctx.fillStyle = '#3ED320'; ctx.fillRect(0, H - 80, W, 10);
+    ctx.fillStyle = '#1B3A1B';
+    for (let tx = 30; tx < W; tx += 70) {
+      ctx.beginPath(); ctx.arc(tx, H - 84, 22, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // HUD
+    if (this.state !== 'idle') {
+      ctx.font = 'bold 22px system-ui'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 4;
+      ctx.fillStyle = this.timeLeft <= 5 ? '#ef5350' : 'white';
+      ctx.textAlign = 'left';  ctx.fillText(`⏱ ${this.timeLeft}s`, 14, 32);
+      ctx.fillStyle = 'white'; ctx.textAlign = 'right'; ctx.fillText(`${this.score}`, W - 14, 32);
+      ctx.shadowBlur = 0;
+    }
+
+    // Crosshair
+    if (this.state === 'playing') this._drawCrosshair(this.crosshair.x, this.crosshair.y);
+
+    // Overlays
+    if (this.state === 'idle') {
+      ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, 0, W, H);
+      this._txt('🦆 Duck Hunt', W/2, H/2 - 36, 'bold 24px system-ui', 'white');
+      this._txt('Click to start — shoot the ducks!', W/2, H/2 + 4, '15px system-ui', 'rgba(255,255,255,.85)');
+      this._txt('Big = 10pts  ·  Small = 25pts  ·  30 seconds', W/2, H/2 + 28, '13px system-ui', 'rgba(255,255,255,.65)');
+      this._txt(`Best: ${this.best}`, W/2, H/2 + 56, '14px system-ui', '#FFD700');
+    }
+    if (this.state === 'done') {
+      ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(0, 0, W, H);
+      this._txt("Time's Up! 🦆", W/2, H/2 - 48, 'bold 22px system-ui', 'white');
+      this._txt(`Score: ${this.score}`, W/2, H/2 - 10, '20px system-ui', '#FFD700');
+      this._txt(`Best: ${this.best}`, W/2, H/2 + 20, '16px system-ui', '#FFD700');
+      this._txt('Click to play again', W/2, H/2 + 56, '13px system-ui', 'rgba(255,255,255,.8)');
+    }
+  }
+
+  _drawDuck(d) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(d.x, d.y);
+    if (d.state === 'falling') ctx.rotate(Math.sin(d.wing) * 0.6);
+    ctx.scale(d.vx > 0 ? 1 : -1, 1);
+
+    const r = d.r;
+    // Wing
+    ctx.save();
+    ctx.translate(-r * 0.2, -r * 0.3);
+    ctx.rotate(Math.sin(d.wing) * 0.55);
+    ctx.fillStyle = d.color;
+    ctx.beginPath(); ctx.ellipse(0, 0, r * 0.9, r * 0.38, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // Body
+    ctx.fillStyle = d.color;
+    ctx.beginPath(); ctx.ellipse(0, 0, r, r * 0.65, 0, 0, Math.PI * 2); ctx.fill();
+    // Head
+    ctx.fillStyle = d.pts === 25 ? '#006400' : d.color;
+    ctx.beginPath(); ctx.arc(r * 0.72, -r * 0.5, r * 0.42, 0, Math.PI * 2); ctx.fill();
+    // Beak
+    ctx.fillStyle = '#FFA500';
+    ctx.beginPath();
+    ctx.moveTo(r * 1.1, -r * 0.5); ctx.lineTo(r * 1.42, -r * 0.35); ctx.lineTo(r * 1.1, -r * 0.2);
+    ctx.closePath(); ctx.fill();
+    // Eye
+    ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(r * 0.82, -r * 0.55, r * 0.11, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#111';  ctx.beginPath(); ctx.arc(r * 0.84, -r * 0.55, r * 0.06, 0, Math.PI * 2); ctx.fill();
+
+    ctx.restore();
+  }
+
+  _drawCrosshair(x, y) {
+    const ctx = this.ctx, r = 18;
+    ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 2;
+    ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 3;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - r - 6, y); ctx.lineTo(x - 5, y);
+    ctx.moveTo(x + 5, y);     ctx.lineTo(x + r + 6, y);
+    ctx.moveTo(x, y - r - 6); ctx.lineTo(x, y - 5);
+    ctx.moveTo(x, y + 5);     ctx.lineTo(x, y + r + 6);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,50,50,.9)';
+    ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  _cloud(x, y, r) {
+    const ctx = this.ctx;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.arc(x + r * 0.85, y - r * 0.3, r * 0.7, 0, Math.PI * 2);
+    ctx.arc(x + r * 1.55, y, r * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  _txt(text, x, y, font, color) {
+    const ctx = this.ctx;
+    ctx.font = font; ctx.fillStyle = color;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, y);
+  }
+
+  _tick() { this._update(); this._draw(); this._raf = requestAnimationFrame(this._tick); }
+
+  destroy() {
+    if (this._raf) cancelAnimationFrame(this._raf);
+    this.canvas?.removeEventListener('mousemove',  this._onMove);
+    this.canvas?.removeEventListener('click',      this._onClick);
+    this.canvas?.removeEventListener('touchstart', this._onTouch);
+    if (this.canvas) this.canvas.style.cursor = '';
+  }
+}
+
 // ─── Learner Dashboard ────────────────────────────────────────────────────────
 function renderLearnerDashboard() {
   setTitle('Dashboard');
@@ -3719,6 +4101,16 @@ function renderLearnerDashboard() {
         </div>`;
       }).join('')}
     </div>` : `<p style="color:var(--text-muted);font-size:.88rem">No completions yet.</p>`}
+    ${(siteSettings.activeGame || 'sprout_runner') === 'duck_hunt' ? `
+    <p class="section-heading">🦆 Duck Hunt</p>
+    <div class="flappy-card">
+      <canvas id="duck-canvas" width="600" height="420" class="flappy-canvas" style="cursor:none"></canvas>
+      <div class="flappy-side">
+        <div class="flappy-lb-header">🏆 Top Scores</div>
+        <div id="duck-lb" class="flappy-lb"></div>
+        <div class="flappy-hint">Click ducks to shoot &nbsp;·&nbsp; 30 seconds<br>Big duck = 10pts &nbsp;·&nbsp; Small duck = 25pts</div>
+      </div>
+    </div>` : `
     <p class="section-heading">🏃 Sprout Runner</p>
     <div class="flappy-card">
       <canvas id="flappy-canvas" width="600" height="420" class="flappy-canvas"></canvas>
@@ -3732,16 +4124,21 @@ function renderLearnerDashboard() {
         </div>
         <div class="flappy-hint">Tap / <kbd>Space</kbd> to jump &nbsp;·&nbsp; Tap twice = double jump</div>
       </div>
-    </div>
+    </div>`}
     `);
 
   document.querySelectorAll('.stat-value[data-target]').forEach(el => {
     animateCount(el, parseInt(el.dataset.target));
   });
 
-  // Start Flappy game + render leaderboard
-  renderFlappyLeaderboard();
-  requestAnimationFrame(() => startFlappyGame());
+  // Start active game + render leaderboard
+  if ((siteSettings.activeGame || 'sprout_runner') === 'duck_hunt') {
+    renderDuckLeaderboard();
+    requestAnimationFrame(() => startDuckHunt());
+  } else {
+    renderFlappyLeaderboard();
+    requestAnimationFrame(() => startFlappyGame());
+  }
 }
 
 // ─── Learner Library ──────────────────────────────────────────────────────────
