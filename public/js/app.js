@@ -4087,6 +4087,35 @@ function renderLearnerDashboard() {
         <p>${done > 0 ? 'You\'ve completed all your assigned courses.' : 'Ask your admin to assign courses to you.'}</p>
         <a href="#/learner/library" class="btn btn-primary" style="margin-top:1rem">Browse Library</a>
       </div>`}
+    ${(() => {
+      const myPaths = learningPaths.filter(p => p.courseIds.some(cid => isAssigned(uid, cid)));
+      if (!myPaths.length) return '';
+      return `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem">
+          <p class="section-heading" style="margin:0">My Learning Paths</p>
+          <a href="#/learner/paths" class="btn btn-outline btn-sm">View All →</a>
+        </div>
+        <div class="ld-paths-list">
+          ${myPaths.map(path => {
+            const assigned = path.courseIds.filter(cid => isAssigned(uid, cid));
+            const completed = assigned.filter(cid => getProgress(uid, cid).completed).length;
+            const total = assigned.length;
+            const pct = total ? Math.round((completed / total) * 100) : 0;
+            const allDone = completed === total && total > 0;
+            return `
+              <a href="#/learner/paths" class="ld-path-row">
+                <div class="ld-path-icon">${allDone ? '✅' : '🛣️'}</div>
+                <div class="ld-path-info">
+                  <div class="ld-path-title">${esc(path.title)}</div>
+                  <div class="ld-path-bar-wrap">
+                    <div class="ld-path-bar-fill" style="width:${pct}%"></div>
+                  </div>
+                </div>
+                <div class="ld-path-pct">${completed}/${total}</div>
+              </a>`;
+          }).join('')}
+        </div>`;
+    })()}
     <p class="section-heading">Completed Courses</p>
     ${done > 0 ? `<div class="completed-grid">
       ${assigned.filter(cid => getProgress(uid, cid).completed).map((cid, i) => {

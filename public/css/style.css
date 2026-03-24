@@ -2019,6 +2019,58 @@ img { max-width: 100%; }
 .path-tl-row.tl-done .path-tl-status { color: var(--accent-dark); }
 .path-tl-row.tl-active .path-tl-status { color: var(--primary-light); }
 
+/* Dashboard compact path list */
+.ld-paths-list {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  margin-bottom: 1.75rem;
+}
+.ld-path-row {
+  display: flex;
+  align-items: center;
+  gap: .85rem;
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: .75rem 1rem;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color .15s, box-shadow .15s;
+}
+.ld-path-row:hover { border-color: var(--primary-light); box-shadow: var(--shadow); }
+.ld-path-icon { font-size: 1.4rem; flex-shrink: 0; }
+.ld-path-info { flex: 1; min-width: 0; }
+.ld-path-title {
+  font-size: .9rem;
+  font-weight: 700;
+  color: var(--primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: .3rem;
+}
+.ld-path-bar-wrap {
+  height: 5px;
+  background: var(--bg-alt);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.ld-path-bar-fill {
+  height: 100%;
+  background: var(--accent-dark);
+  border-radius: 99px;
+  transition: width .4s ease;
+}
+.ld-path-pct {
+  font-size: .82rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  min-width: 32px;
+  text-align: right;
+}
+
 /* Path builder modal */
 .path-search-box {
   border: 1.5px solid var(--border);
