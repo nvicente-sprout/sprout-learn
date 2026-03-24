@@ -998,6 +998,17 @@ function renderAdminCourses(filterQ = '', filterCat = '') {
     return matchQ && matchCat;
   });
 
+  const gridHTML = filtered.length ? filtered.map(c => adminCourseCard(c)).join('') : '<div class="empty-state"><span class="empty-icon">📭</span><h2>No courses found</h2><p>Try different filters.</p></div>';
+
+  // Already on this page — only swap the grid to avoid re-animating everything
+  const existingGrid = document.querySelector('#main-content .course-grid');
+  if (existingGrid) {
+    existingGrid.innerHTML = gridHTML;
+    const inp = document.getElementById('course-search');
+    if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+    return;
+  }
+
   setMain(`
     <div class="page-header"><h1>Courses</h1><p>Manage all training content</p></div>
     <div class="toolbar">
@@ -1015,10 +1026,7 @@ function renderAdminCourses(filterQ = '', filterCat = '') {
       <button class="btn btn-outline btn-sm" onclick="showAddScormModal()">📦 SCORM</button>
       <button class="btn btn-primary btn-sm" onclick="showCreateCourseModal()">+ New Course</button>
     </div>
-    <div class="course-grid">
-      ${filtered.length ? filtered.map(c => adminCourseCard(c)).join('') : '<div class="empty-state"><span class="empty-icon">📭</span><h2>No courses found</h2><p>Try different filters.</p></div>'}
-    </div>`);
-  if (filterQ) { const inp = document.getElementById('course-search'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
+    <div class="course-grid">${gridHTML}</div>`);
 }
 
 function courseCoverHTML(c) {
@@ -2332,6 +2340,36 @@ function renderAdminTeam(filterTeam = '', filterCourse = '', searchQ = '', sortB
     </div>`;
   };
 
+  const adminsHTML = allUsers.filter(u => u.isAdmin).map((u, i) => `
+    <div class="member-card" style="animation-delay:${i*0.07}s">
+      <div class="member-card-top">
+        ${avatarHTML(u, 44)}
+        <div class="member-info">
+          <div class="member-name">${esc(u.name)}</div>
+          <div class="member-role">${esc(allTeams.find(t=>t.id===u.teamId)?.name||'')}</div>
+          <div style="font-size:.72rem;color:var(--text-muted)">${esc(u.email)}</div>
+        </div>
+        <span class="badge badge-done">Admin</span>
+      </div>
+      ${u.id !== currentUser.id ? `<div style="margin-top:.5rem"><button class="btn btn-outline btn-sm" onclick="demoteUser('${u.id}')">⬇ Make Learner</button></div>` : '<div style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem">That\'s you</div>'}
+    </div>`).join('');
+
+  const resultsHTML = `
+    ${teamSections.length === 0
+      ? `<div class="empty-state"><span class="empty-icon">👥</span><h2>No members found</h2><p>Try adjusting your filters.</p></div>`
+      : teamSections.map(teamSection).join('')}
+    <p class="section-heading" style="margin-top:1.5rem">Admins</p>
+    <div class="member-grid">${adminsHTML}</div>`;
+
+  // Already on this page — only swap results to avoid re-animating everything
+  const existingResults = document.getElementById('tp-results');
+  if (existingResults) {
+    existingResults.innerHTML = resultsHTML;
+    const inp = document.querySelector('#main-content .toolbar-search input');
+    if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+    return;
+  }
+
   setMain(`
     <div class="page-header">
       <h1>Team Progress</h1>
@@ -2361,27 +2399,7 @@ function renderAdminTeam(filterTeam = '', filterCourse = '', searchQ = '', sortB
       </select>
     </div>
 
-    ${teamSections.length === 0
-      ? `<div class="empty-state"><span class="empty-icon">👥</span><h2>No members found</h2><p>Try adjusting your filters.</p></div>`
-      : teamSections.map(teamSection).join('')}
-
-    <p class="section-heading" style="margin-top:1.5rem">Admins</p>
-    <div class="member-grid">
-      ${allUsers.filter(u => u.isAdmin).map((u, i) => `
-        <div class="member-card" style="animation-delay:${i*0.07}s">
-          <div class="member-card-top">
-            ${avatarHTML(u, 44)}
-            <div class="member-info">
-              <div class="member-name">${esc(u.name)}</div>
-              <div class="member-role">${esc(allTeams.find(t=>t.id===u.teamId)?.name||'')}</div>
-              <div style="font-size:.72rem;color:var(--text-muted)">${esc(u.email)}</div>
-            </div>
-            <span class="badge badge-done">Admin</span>
-          </div>
-          ${u.id !== currentUser.id ? `<div style="margin-top:.5rem"><button class="btn btn-outline btn-sm" onclick="demoteUser('${u.id}')">⬇ Make Learner</button></div>` : '<div style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem">That\'s you</div>'}
-        </div>`).join('')}
-    </div>`);
-  if (searchQ) { const inp = document.querySelector('#main-content .toolbar-search input'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
+    <div id="tp-results">${resultsHTML}</div>`);
 }
 
 async function promoteUser(userId) {
@@ -3591,6 +3609,17 @@ function renderLearnerLibrary(filterQ = '', filterCat = '', filterType = '') {
     return matchQ && matchCat && matchType;
   });
 
+  const gridHTML = filtered.length ? filtered.map((c, i) => learnerCourseCard(c, uid, i)).join('') : '<div class="empty-state"><span class="empty-icon">📭</span><h2>No courses found</h2><p>Try different filters.</p></div>';
+
+  // Already on this page — only swap the grid to avoid re-animating everything
+  const existingGrid = document.querySelector('#main-content .course-grid');
+  if (existingGrid) {
+    existingGrid.innerHTML = gridHTML;
+    const inp = document.querySelector('#main-content .toolbar-search input');
+    if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+    return;
+  }
+
   setMain(`
     <div class="page-header"><h1>Course Library</h1><p>Explore all available training content</p></div>
     <div class="toolbar">
@@ -3608,10 +3637,7 @@ function renderLearnerLibrary(filterQ = '', filterCat = '', filterType = '') {
         <option value="Paid" ${filterType==='Paid'?'selected':''}>Paid</option>
       </select>
     </div>
-    <div class="course-grid">
-      ${filtered.length ? filtered.map((c, i) => learnerCourseCard(c, uid, i)).join('') : '<div class="empty-state"><span class="empty-icon">📭</span><h2>No courses found</h2><p>Try different filters.</p></div>'}
-    </div>`);
-  if (filterQ) { const inp = document.querySelector('#main-content .toolbar-search input'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
+    <div class="course-grid">${gridHTML}</div>`);
 }
 
 function learnerCourseCard(c, uid, i = 0) {
