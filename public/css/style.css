@@ -1798,58 +1798,208 @@ img { max-width: 100%; }
 /* ─── Learning Paths ──────────────────────────────────────────────────────── */
 .path-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 1.5rem;
 }
+
+/* Shared card shell */
 .path-card {
   background: var(--card-bg);
-  border: 1.5px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 1.25rem;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: .75rem;
   animation: fadeUp .35s ease both;
+  border: none;
 }
-.path-card-header {
+
+/* Gradient banner (top section of every card) */
+.path-banner {
+  background: linear-gradient(135deg, var(--primary) 0%, #2d6a2d 100%);
+  padding: 1.25rem 1.4rem 1.1rem;
+  color: #fff;
+  position: relative;
+}
+.path-banner-top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: .75rem;
+  margin-bottom: .5rem;
 }
-.path-card-icon {
-  font-size: 1.75rem;
+.path-banner-icon {
+  font-size: 2rem;
   line-height: 1;
   flex-shrink: 0;
+  margin-top: .1rem;
 }
-.path-card-info { flex: 1; min-width: 0; }
-.path-card-title {
+.path-banner-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.3;
+  flex: 1;
+}
+.path-banner-meta {
+  font-size: .78rem;
+  color: rgba(255,255,255,.65);
+  margin-top: .2rem;
+}
+.path-banner-badge {
+  background: rgba(255,255,255,.18);
+  color: #fff;
+  font-size: .72rem;
   font-weight: 700;
-  font-size: 1rem;
-  color: var(--primary);
+  padding: .2rem .6rem;
+  border-radius: 20px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex-shrink: 0;
 }
-.path-card-meta { font-size: .8rem; color: var(--text-muted); }
-.path-card-desc { font-size: .85rem; color: var(--text-muted); }
-.path-card-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .25rem; }
 
-.path-course-list {
+/* Progress bar inside banner */
+.path-banner-progress {
+  margin-top: .75rem;
+}
+.path-banner-progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: .75rem;
+  color: rgba(255,255,255,.7);
+  margin-bottom: .3rem;
+}
+.path-banner-bar {
+  height: 6px;
+  background: rgba(255,255,255,.2);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.path-banner-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 99px;
+  transition: width .4s ease;
+}
+
+/* Card body */
+.path-body {
+  padding: 1.1rem 1.4rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: .9rem;
+  flex: 1;
+}
+.path-desc {
+  font-size: .84rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* Admin preview list */
+.path-preview-list {
   display: flex;
   flex-direction: column;
   gap: .3rem;
-  background: var(--bg);
-  border-radius: var(--radius);
-  padding: .6rem .75rem;
 }
-.path-course-item {
+.path-preview-item {
   display: flex;
   align-items: center;
-  gap: .5rem;
+  gap: .6rem;
   font-size: .83rem;
   color: var(--text);
+  padding: .3rem 0;
+  border-bottom: 1px solid var(--bg-alt);
 }
+.path-preview-item:last-child { border-bottom: none; }
+.path-num-badge {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: .65rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.path-card-actions {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+  padding-top: .5rem;
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+}
+
+/* Timeline (learner view) */
+.path-timeline {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  padding-left: .25rem;
+}
+.path-timeline::before {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 22px;
+  bottom: 22px;
+  width: 2px;
+  background: var(--border);
+  border-radius: 99px;
+}
+.path-tl-row {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .55rem 0;
+  position: relative;
+}
+.path-tl-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .72rem;
+  font-weight: 800;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  background: #fff;
+  border: 2.5px solid var(--border);
+  color: var(--text-muted);
+  box-shadow: 0 0 0 3px var(--card-bg);
+}
+.path-tl-row.tl-done .path-tl-dot {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+  color: #fff;
+}
+.path-tl-row.tl-active .path-tl-dot {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.path-tl-info { flex: 1; min-width: 0; }
+.path-tl-name {
+  font-size: .88rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.path-tl-row.tl-done .path-tl-name { color: var(--text-muted); text-decoration: line-through; }
+.path-tl-status {
+  font-size: .72rem;
+  color: var(--text-muted);
+  margin-top: .05rem;
+}
+.path-tl-row.tl-done .path-tl-status { color: var(--accent-dark); }
+.path-tl-row.tl-active .path-tl-status { color: var(--primary-light); }
 
 /* Path builder modal */
 .path-search-box {
@@ -1892,37 +2042,7 @@ img { max-width: 100%; }
   flex-shrink: 0;
 }
 
-/* Learner path steps */
-.path-steps { display: flex; flex-direction: column; gap: .45rem; }
-.path-step-row {
-  display: flex;
-  align-items: center;
-  gap: .65rem;
-  padding: .55rem .7rem;
-  border-radius: var(--radius);
-  background: var(--bg);
-  border: 1.5px solid var(--border);
-}
-.path-step-row.path-step-done { border-color: var(--accent-dark); background: #f0fff0; }
-.path-step-row.path-step-active { border-color: var(--primary-light); background: #e8f5e9; }
-.path-step-badge {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--primary);
-  color: #fff;
-  font-size: .75rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.path-step-row.path-step-done .path-step-badge { background: var(--accent-dark); }
-.path-step-row.path-step-active .path-step-badge { background: var(--primary-light); }
-.path-step-name { flex: 1; font-size: .88rem; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* Assign row reuse */
+/* Assign row */
 .assign-row {
   display: flex;
   align-items: center;

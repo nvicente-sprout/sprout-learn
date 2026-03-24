@@ -4727,26 +4727,34 @@ function renderAdminPaths() {
 
 function adminPathCard(path) {
   const count = path.courseIds.length;
-  const preview = path.courseIds.slice(0, 3).map(id => getCourse(id)?.title).filter(Boolean);
+  const preview = path.courseIds.slice(0, 4).map(id => getCourse(id)?.title).filter(Boolean);
   return `
-    <div class="path-card fade-up">
-      <div class="path-card-header">
-        <div class="path-card-icon">🛣️</div>
-        <div class="path-card-info">
-          <div class="path-card-title">${esc(path.title)}</div>
-          <div class="path-card-meta">${count} course${count !== 1 ? 's' : ''}</div>
+    <div class="path-card">
+      <div class="path-banner">
+        <div class="path-banner-top">
+          <div class="path-banner-icon">🛣️</div>
+          <div style="flex:1;min-width:0">
+            <div class="path-banner-title">${esc(path.title)}</div>
+            ${path.description ? `<div class="path-banner-meta">${esc(path.description)}</div>` : ''}
+          </div>
+          <span class="path-banner-badge">${count} course${count !== 1 ? 's' : ''}</span>
         </div>
       </div>
-      ${path.description ? `<div class="path-card-desc">${esc(path.description)}</div>` : ''}
-      ${preview.length ? `
-        <div class="path-course-list">
-          ${preview.map((n, i) => `<div class="path-course-item"><span class="path-step-num">${i+1}</span>${esc(n)}</div>`).join('')}
-          ${count > 3 ? `<div class="path-course-item" style="color:var(--text-muted)">+${count - 3} more…</div>` : ''}
-        </div>` : ''}
-      <div class="path-card-actions">
-        <button class="btn btn-outline btn-sm" onclick="showAssignPathModal('${path.id}')">👥 Assign</button>
-        <button class="btn btn-outline btn-sm" onclick="showEditPathModal('${path.id}')">✏️ Edit</button>
-        <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="deletePath('${path.id}')">🗑</button>
+      <div class="path-body">
+        ${preview.length ? `
+          <div class="path-preview-list">
+            ${preview.map((n, i) => `
+              <div class="path-preview-item">
+                <span class="path-num-badge">${i + 1}</span>
+                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n)}</span>
+              </div>`).join('')}
+            ${count > 4 ? `<div class="path-preview-item" style="color:var(--text-muted);font-style:italic">+${count - 4} more courses…</div>` : ''}
+          </div>` : `<div style="color:var(--text-muted);font-size:.85rem">No courses added yet.</div>`}
+        <div class="path-card-actions">
+          <button class="btn btn-primary btn-sm" onclick="showAssignPathModal('${path.id}')">👥 Assign</button>
+          <button class="btn btn-outline btn-sm" onclick="showEditPathModal('${path.id}')">✏️ Edit</button>
+          <button class="btn btn-outline btn-sm" style="color:var(--danger);margin-left:auto" onclick="deletePath('${path.id}')">🗑 Delete</button>
+        </div>
       </div>
     </div>`;
 }
@@ -5039,33 +5047,45 @@ function learnerPathCard(path, uid, i = 0) {
   const allDone = completed === total && total > 0;
 
   return `
-    <div class="path-card fade-up" style="animation-delay:${i * 0.05}s">
-      <div class="path-card-header">
-        <div class="path-card-icon">${allDone ? '✅' : '🛣️'}</div>
-        <div class="path-card-info">
-          <div class="path-card-title">${esc(path.title)}</div>
-          <div class="path-card-meta">${completed} of ${total} courses completed</div>
+    <div class="path-card" style="animation-delay:${i * 0.06}s">
+      <div class="path-banner">
+        <div class="path-banner-top">
+          <div class="path-banner-icon">${allDone ? '✅' : '🛣️'}</div>
+          <div style="flex:1;min-width:0">
+            <div class="path-banner-title">${esc(path.title)}</div>
+            ${path.description ? `<div class="path-banner-meta">${esc(path.description)}</div>` : ''}
+          </div>
+          ${allDone ? '<span class="path-banner-badge">Complete!</span>' : ''}
         </div>
-        ${allDone ? '<span class="badge badge-done">✓ Done</span>' : ''}
+        <div class="path-banner-progress">
+          <div class="path-banner-progress-label">
+            <span>${completed} of ${total} courses done</span>
+            <span>${pct}%</span>
+          </div>
+          <div class="path-banner-bar"><div class="path-banner-bar-fill" style="width:${pct}%"></div></div>
+        </div>
       </div>
-      ${path.description ? `<div class="path-card-desc">${esc(path.description)}</div>` : ''}
-      <div class="progress-bar-wrap" style="margin:.75rem 0">
-        <div class="progress-bar" style="width:${pct}%"></div>
-      </div>
-      <div class="path-steps">
-        ${assigned.map((cid, idx) => {
-          const c = getCourse(cid);
-          const p = getProgress(uid, cid);
-          const status = p.completed ? 'done' : p.currentSlide > 0 ? 'active' : 'todo';
-          const icon = p.completed ? '✓' : p.currentSlide > 0 ? '▶' : String(idx + 1);
-          const label = p.completed ? 'Review' : p.currentSlide > 0 ? 'Continue' : 'Start';
-          return `
-            <div class="path-step-row path-step-${status}">
-              <div class="path-step-badge">${icon}</div>
-              <div class="path-step-name">${esc(c?.title || cid)}</div>
-              <a href="#/course/${cid}" class="btn btn-sm ${p.completed ? 'btn-outline' : 'btn-primary'}" style="flex-shrink:0">${label}</a>
-            </div>`;
-        }).join('')}
+      <div class="path-body">
+        <div class="path-timeline">
+          ${assigned.map((cid, idx) => {
+            const c = getCourse(cid);
+            const p = getProgress(uid, cid);
+            const tlClass = p.completed ? 'tl-done' : p.currentSlide > 0 ? 'tl-active' : '';
+            const dotIcon = p.completed ? '✓' : p.currentSlide > 0 ? '▶' : String(idx + 1);
+            const statusLabel = p.completed ? 'Completed' : p.currentSlide > 0 ? 'In progress' : 'Not started';
+            const btnLabel = p.completed ? 'Review' : p.currentSlide > 0 ? 'Continue' : 'Start';
+            const btnClass = p.completed ? 'btn-outline' : 'btn-primary';
+            return `
+              <div class="path-tl-row ${tlClass}">
+                <div class="path-tl-dot">${dotIcon}</div>
+                <div class="path-tl-info">
+                  <div class="path-tl-name">${esc(c?.title || cid)}</div>
+                  <div class="path-tl-status">${statusLabel}</div>
+                </div>
+                <a href="#/course/${cid}" class="btn btn-sm ${btnClass}" style="flex-shrink:0">${btnLabel}</a>
+              </div>`;
+          }).join('')}
+        </div>
       </div>
     </div>`;
 }
