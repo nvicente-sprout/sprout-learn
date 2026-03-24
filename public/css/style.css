@@ -1772,6 +1772,29 @@ img { max-width: 100%; }
 .sp-status-fail    { background: #fff3e0; color: #e65100; }
 .sp-status-pending { background: #f5f5f5; color: #757575; }
 
+/* ─── Course Type Picker ──────────────────────────────────────────────────── */
+.course-type-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .35rem;
+  padding: 1rem .75rem;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color .15s, background .15s, transform .12s;
+  text-align: center;
+}
+.course-type-pick:hover {
+  border-color: var(--accent-dark);
+  background: #e8f5e9;
+  transform: translateY(-2px);
+}
+.course-type-icon  { font-size: 1.6rem; line-height: 1; }
+.course-type-label { font-weight: 700; font-size: .88rem; color: var(--primary); }
+.course-type-desc  { font-size: .75rem; color: var(--text-muted); }
+
 /* ─── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 860px) {
   .header-nav { display: none; }

@@ -1038,10 +1038,7 @@ function renderAdminCourses(filterQ = '', filterCat = '') {
         ${CATEGORIES.map(c => `<option value="${esc(c)}" ${filterCat===c?'selected':''}>${esc(c)}</option>`).join('')}
       </select>
       <div class="toolbar-spacer"></div>
-      <button class="btn btn-outline btn-sm" onclick="showUploadModal()">📄 Upload PDF</button>
-      <button class="btn btn-outline btn-sm" onclick="showAddUrlCourseModal()">🔗 YouTube / Slides</button>
-      <button class="btn btn-outline btn-sm" onclick="showAddScormModal()">📦 SCORM</button>
-      <button class="btn btn-primary btn-sm" onclick="showCreateCourseModal()">+ New Course</button>
+      <button class="btn btn-primary btn-sm" onclick="showAddCoursePickerModal()">+ Add Course</button>
     </div>
     <div class="course-grid">${gridHTML}</div>`);
 }
@@ -1150,6 +1147,47 @@ async function handleCoverChange(courseId, input) {
 }
 
 // ─── Create Course Modal ──────────────────────────────────────────────────────
+// ─── Add Course Picker ────────────────────────────────────────────────────────
+function showAddCoursePickerModal() {
+  showModal(`
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="gmodal-header">
+        <h2>Add Course</h2>
+        <button class="gmodal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="gmodal-body">
+        <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1rem">Choose a content type to get started</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.65rem">
+          <button class="course-type-pick" onclick="closeModal();showUploadModal()">
+            <span class="course-type-icon">📄</span>
+            <div class="course-type-label">PDF Upload</div>
+            <div class="course-type-desc">Upload a PDF as slides</div>
+          </button>
+          <button class="course-type-pick" onclick="closeModal();showAddUrlCourseModal('youtube')">
+            <span class="course-type-icon">🎬</span>
+            <div class="course-type-label">YouTube Video</div>
+            <div class="course-type-desc">Embed a YouTube video</div>
+          </button>
+          <button class="course-type-pick" onclick="closeModal();showAddUrlCourseModal('slides')">
+            <span class="course-type-icon">📊</span>
+            <div class="course-type-label">Google Slides</div>
+            <div class="course-type-desc">Embed a Slides presentation</div>
+          </button>
+          <button class="course-type-pick" onclick="closeModal();showAddScormModal()">
+            <span class="course-type-icon">📦</span>
+            <div class="course-type-label">SCORM Package</div>
+            <div class="course-type-desc">Upload a SCORM .zip file</div>
+          </button>
+          <button class="course-type-pick" style="grid-column:1/-1" onclick="closeModal();showCreateCourseModal()">
+            <span class="course-type-icon">📝</span>
+            <div class="course-type-label">No Content Yet</div>
+            <div class="course-type-desc">Create a placeholder — add content later</div>
+          </button>
+        </div>
+      </div>
+    </div>`);
+}
+
 function showCreateCourseModal() {
   showModal(`
     <div class="modal" onclick="event.stopPropagation()">
@@ -1224,18 +1262,24 @@ function createCourse() {
 }
 
 // ─── Add YouTube / Google Slides Course Modal ─────────────────────────────────
-function showAddUrlCourseModal() {
+function showAddUrlCourseModal(hint = '') {
+  const placeholder = hint === 'youtube' ? 'Paste a YouTube video URL'
+    : hint === 'slides' ? 'Paste a Google Slides share/edit link'
+    : 'Paste a YouTube or Google Slides URL';
+  const title = hint === 'youtube' ? 'Add YouTube Video'
+    : hint === 'slides' ? 'Add Google Slides'
+    : 'Add YouTube / Google Slides';
   showModal(`
     <div class="modal" onclick="event.stopPropagation()">
       <div class="gmodal-header">
-        <h2>Add YouTube / Google Slides Course</h2>
+        <h2>${title}</h2>
         <button class="gmodal-close" onclick="closeModal()">✕</button>
       </div>
       <div class="gmodal-body">
         <div class="form-group">
           <label class="form-label">Content URL *</label>
-          <input id="url-input" class="form-input" placeholder="Paste YouTube or Google Slides URL" oninput="onUrlInput(this.value)" />
-          <div id="url-detect" style="font-size:.78rem;margin-top:.4rem;color:var(--text-muted)">Paste a YouTube video URL or a Google Slides share/edit link</div>
+          <input id="url-input" class="form-input" placeholder="${placeholder}" oninput="onUrlInput(this.value)" />
+          <div id="url-detect" style="font-size:.78rem;margin-top:.4rem;color:var(--text-muted)">${placeholder}</div>
         </div>
         <div class="form-group">
           <label class="form-label">Course Title *</label>
