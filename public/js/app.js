@@ -4765,7 +4765,7 @@ function showCreatePathModal() {
     <div class="modal" onclick="event.stopPropagation()" style="max-width:600px;width:95vw">
       <div class="modal-header">
         <h3>New Learning Path</h3>
-        <button class="modal-close" onclick="closeModal()">✕</button>
+        <button class="gmodal-close" onclick="closeModal()">✕</button>
       </div>
       <div class="modal-body" style="max-height:70vh;overflow-y:auto">
         <div class="form-group">
@@ -4801,7 +4801,7 @@ function showEditPathModal(pathId) {
     <div class="modal" onclick="event.stopPropagation()" style="max-width:600px;width:95vw">
       <div class="modal-header">
         <h3>Edit Learning Path</h3>
-        <button class="modal-close" onclick="closeModal()">✕</button>
+        <button class="gmodal-close" onclick="closeModal()">✕</button>
       </div>
       <div class="modal-body" style="max-height:70vh;overflow-y:auto">
         <div class="form-group">
@@ -4924,7 +4924,7 @@ function deletePath(pathId) {
   if (!path) return;
   showModal(`
     <div class="modal" onclick="event.stopPropagation()" style="max-width:380px">
-      <div class="modal-header"><h3>Delete Path</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+      <div class="modal-header"><h3>Delete Path</h3><button class="gmodal-close" onclick="closeModal()">✕</button></div>
       <div class="modal-body"><p>Delete <strong>${esc(path.title)}</strong>? Individual course assignments won't be affected.</p></div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -4958,7 +4958,7 @@ function showAssignPathModalFiltered(pathId, filterTeamId) {
     <div class="modal" onclick="event.stopPropagation()" style="max-width:460px;width:95vw">
       <div class="modal-header">
         <h3>Assign: ${esc(path.title)}</h3>
-        <button class="modal-close" onclick="closeModal()">✕</button>
+        <button class="gmodal-close" onclick="closeModal()">✕</button>
       </div>
       <div class="modal-body">
         <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:.75rem">Assigns all ${path.courseIds.length} course${path.courseIds.length !== 1 ? 's' : ''} in this path.</p>

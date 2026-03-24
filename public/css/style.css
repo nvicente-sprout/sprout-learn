@@ -747,6 +747,24 @@ img { max-width: 100%; }
 .gmodal-body { padding: 1.5rem; }
 .gmodal-footer { padding: 1rem 1.5rem; border-top: 1px solid var(--border); display: flex; gap: .75rem; justify-content: flex-end; }
 
+/* modal-header / modal-body / modal-footer — shared structure used by path modals */
+.modal-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.modal-header h3 { font-size: 1.05rem; font-weight: 700; color: var(--primary); }
+.modal-body { padding: 1.5rem; }
+.modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: .75rem;
+  justify-content: flex-end;
+}
+
 .form-group { margin-bottom: 1.1rem; }
 .form-label { display: block; font-size: .83rem; font-weight: 600; color: var(--text); margin-bottom: .4rem; }
 .form-input, .form-select, .form-textarea {
@@ -2011,22 +2029,23 @@ img { max-width: 100%; }
 .path-search-item {
   display: flex;
   align-items: center;
-  padding: .55rem .75rem;
+  padding: .75rem 1rem;
   cursor: pointer;
   border-bottom: 1px solid var(--border);
   transition: background .12s;
+  gap: .5rem;
 }
 .path-search-item:last-child { border-bottom: none; }
 .path-search-item:hover { background: var(--bg); }
 .path-ordered-item {
   display: flex;
   align-items: center;
-  gap: .5rem;
-  padding: .5rem .6rem;
+  gap: .65rem;
+  padding: .65rem .85rem;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  margin-bottom: .35rem;
+  margin-bottom: .4rem;
 }
 .path-step-num {
   width: 22px;
