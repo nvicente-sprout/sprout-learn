@@ -2381,7 +2381,7 @@ function renderAdminTeam(filterTeam = '', filterCourse = '', searchQ = '', sortB
           ${u.id !== currentUser.id ? `<div style="margin-top:.5rem"><button class="btn btn-outline btn-sm" onclick="demoteUser('${u.id}')">⬇ Make Learner</button></div>` : '<div style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem">That\'s you</div>'}
         </div>`).join('')}
     </div>`);
-  if (searchQ) { const inp = document.querySelector('#main .toolbar-search input'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
+  if (searchQ) { const inp = document.querySelector('#main-content .toolbar-search input'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
 }
 
 async function promoteUser(userId) {
@@ -3611,7 +3611,7 @@ function renderLearnerLibrary(filterQ = '', filterCat = '', filterType = '') {
     <div class="course-grid">
       ${filtered.length ? filtered.map((c, i) => learnerCourseCard(c, uid, i)).join('') : '<div class="empty-state"><span class="empty-icon">📭</span><h2>No courses found</h2><p>Try different filters.</p></div>'}
     </div>`);
-  if (filterQ) { const inp = document.querySelector('#main .toolbar-search input'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
+  if (filterQ) { const inp = document.querySelector('#main-content .toolbar-search input'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
 }
 
 function learnerCourseCard(c, uid, i = 0) {
