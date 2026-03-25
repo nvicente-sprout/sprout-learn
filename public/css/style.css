@@ -1297,6 +1297,7 @@ img { max-width: 100%; }
 
 /* ─── SCORM Badge ─────────────────────────────────────────────────────────── */
 .badge-scorm { background: #e8eaf6; color: #3949ab; }
+.badge-html  { background: #fff3e0; color: #e65100; }
 
 /* ─── Reports ─────────────────────────────────────────────────────────────── */
 .reports-section { margin-top: 2rem; }
