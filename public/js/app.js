@@ -377,16 +377,13 @@ function courseToRow(c) {
   };
 }
 
-async function loadData(userId = null, isAdmin = true) {
+async function loadData() {
   showLoader('Loading Sprout Learn', 'Fetching your data');
   try {
-    const assignmentsQuery = (!isAdmin && userId)
-      ? sb.from('assignments').select('*').eq('user_id', userId)
-      : sb.from('assignments').select('*');
     const [cRes, qRes, aRes, pRes, uRes, tRes, lpRes] = await Promise.all([
       sb.from('courses').select('*').order('created_at', { ascending: false }),
       sb.from('questions').select('*'),
-      assignmentsQuery,
+      sb.from('assignments').select('*'),
       sb.from('progress').select('*'),
       sb.from('users').select('*').order('created_at', { ascending: true }),
       sb.from('teams').select('*').order('name'),
@@ -481,7 +478,7 @@ async function handleAuthUser(authUser) {
 
   // Insert new user only if they don't exist yet (never overwrite existing record)
   const googleAvatar = authUser.user_metadata?.avatar_url || authUser.user_metadata?.picture || null;
-  const { data: existingUser } = await sb.from('users').select('id, avatar_url, is_admin').eq('id', authUser.id).maybeSingle();
+  const { data: existingUser } = await sb.from('users').select('id, avatar_url').eq('id', authUser.id).maybeSingle();
   if (!existingUser) {
     const name = authUser.user_metadata?.full_name || email.split('@')[0];
     await sb.from('users').insert({
@@ -497,8 +494,7 @@ async function handleAuthUser(authUser) {
     await sb.from('users').update({ avatar_url: googleAvatar }).eq('id', authUser.id);
   }
 
-  const isAdminUser = existingUser?.is_admin || false;
-  await loadData(authUser.id, isAdminUser);
+  await loadData();
   currentUser = allUsers.find(u => u.id === authUser.id);
   if (!currentUser) { currentUser = null; navigate('/login'); return; }
   await loadNotifications();
@@ -2398,13 +2394,23 @@ async function generateFromPastedText(courseId, courseTitle) {
 
 // ─── Assign Modal ─────────────────────────────────────────────────────────────
 async function showAssignModal(courseId, filterTeamId = '') {
-  const { data: uData } = await sb.from('users').select('*').order('created_at', { ascending: true });
+  const [{ data: uData }, { data: aData }] = await Promise.all([
+    sb.from('users').select('*').order('created_at', { ascending: true }),
+    sb.from('assignments').select('*'),
+  ]);
   if (uData) allUsers = uData.map((u, i) => ({
     id: u.id, email: u.email, name: u.name || u.email.split('@')[0],
     role: u.role, isAdmin: u.is_admin, teamId: u.team_id || null,
     avatarUrl: u.avatar_url || null,
     color: USER_COLORS[i % USER_COLORS.length],
   }));
+  if (aData) {
+    assignments = {};
+    aData.forEach(r => {
+      if (!assignments[r.user_id]) assignments[r.user_id] = [];
+      assignments[r.user_id].push(r.course_id);
+    });
+  }
   const course = getCourse(courseId);
   const visible = filterTeamId ? learners().filter(u => u.teamId === filterTeamId) : learners();
   const teamTabs = [{ id: '', name: 'All' }, ...allTeams.map(t => ({ id: t.id, name: t.name }))];
@@ -2783,7 +2789,7 @@ function renderAdminSettings(filterTeam = '') {
     <div class="settings-section" style="margin-top:2rem">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
         <h2 class="section-heading" style="margin:0">User Access</h2>
-        <select class="toolbar-select" onchange="renderAdminSettings(this.value)">
+        <select id="settings-team-filter" class="toolbar-select" onchange="renderAdminSettings(this.value)">
           <option value="" ${filterTeam===''?'selected':''}>All Teams</option>
           ${allTeams.map(t => `<option value="${t.id}" ${filterTeam===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}
           <option value="__none__" ${filterTeam==='__none__'?'selected':''}>No Team</option>
@@ -2885,6 +2891,8 @@ async function deleteTeam(id, name) {
   if (!confirm(`Delete team "${name}"? Users in this team will have no team assigned.`)) return;
   const { error } = await sb.from('teams').delete().eq('id', id);
   if (error) { toast('Failed: ' + error.message, 'error'); return; }
+  // Clear team_id in DB for all users who were in this team
+  await sb.from('users').update({ team_id: null }).eq('team_id', id);
   allTeams = allTeams.filter(t => t.id !== id);
   allUsers.forEach(u => { if (u.teamId === id) u.teamId = null; });
   toast('Team deleted');
@@ -2925,9 +2933,10 @@ async function saveUserEdit(userId) {
   if (error) { toast('Failed: ' + error.message, 'error'); return; }
   const u = getUser(userId);
   if (u) { u.name = name; u.teamId = teamId; }
+  const prevFilter = document.getElementById('settings-team-filter')?.value || '';
   closeModal();
   toast('Saved!');
-  renderAdminSettings();
+  renderAdminSettings(prevFilter);
 }
 
 // ─── Leaderboard (shared admin/learner) ───────────────────────────────────────
