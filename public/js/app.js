@@ -2393,7 +2393,14 @@ async function generateFromPastedText(courseId, courseTitle) {
 }
 
 // ─── Assign Modal ─────────────────────────────────────────────────────────────
-function showAssignModal(courseId, filterTeamId = '') {
+async function showAssignModal(courseId, filterTeamId = '') {
+  const { data: uData } = await sb.from('users').select('*').order('created_at', { ascending: true });
+  if (uData) allUsers = uData.map((u, i) => ({
+    id: u.id, email: u.email, name: u.name || u.email.split('@')[0],
+    role: u.role, isAdmin: u.is_admin, teamId: u.team_id || null,
+    avatarUrl: u.avatar_url || null,
+    color: USER_COLORS[i % USER_COLORS.length],
+  }));
   const course = getCourse(courseId);
   const visible = filterTeamId ? learners().filter(u => u.teamId === filterTeamId) : learners();
   const teamTabs = [{ id: '', name: 'All' }, ...allTeams.map(t => ({ id: t.id, name: t.name }))];
