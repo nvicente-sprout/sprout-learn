@@ -377,13 +377,16 @@ function courseToRow(c) {
   };
 }
 
-async function loadData() {
+async function loadData(userId = null, isAdmin = true) {
   showLoader('Loading Sprout Learn', 'Fetching your data');
   try {
+    const assignmentsQuery = (!isAdmin && userId)
+      ? sb.from('assignments').select('*').eq('user_id', userId)
+      : sb.from('assignments').select('*');
     const [cRes, qRes, aRes, pRes, uRes, tRes, lpRes] = await Promise.all([
       sb.from('courses').select('*').order('created_at', { ascending: false }),
       sb.from('questions').select('*'),
-      sb.from('assignments').select('*'),
+      assignmentsQuery,
       sb.from('progress').select('*'),
       sb.from('users').select('*').order('created_at', { ascending: true }),
       sb.from('teams').select('*').order('name'),
@@ -478,7 +481,7 @@ async function handleAuthUser(authUser) {
 
   // Insert new user only if they don't exist yet (never overwrite existing record)
   const googleAvatar = authUser.user_metadata?.avatar_url || authUser.user_metadata?.picture || null;
-  const { data: existingUser } = await sb.from('users').select('id, avatar_url').eq('id', authUser.id).maybeSingle();
+  const { data: existingUser } = await sb.from('users').select('id, avatar_url, is_admin').eq('id', authUser.id).maybeSingle();
   if (!existingUser) {
     const name = authUser.user_metadata?.full_name || email.split('@')[0];
     await sb.from('users').insert({
@@ -494,7 +497,8 @@ async function handleAuthUser(authUser) {
     await sb.from('users').update({ avatar_url: googleAvatar }).eq('id', authUser.id);
   }
 
-  await loadData();
+  const isAdminUser = existingUser?.is_admin || false;
+  await loadData(authUser.id, isAdminUser);
   currentUser = allUsers.find(u => u.id === authUser.id);
   if (!currentUser) { currentUser = null; navigate('/login'); return; }
   await loadNotifications();
