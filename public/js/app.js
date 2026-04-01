@@ -2735,7 +2735,7 @@ async function saveUserRole(userId) {
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
-function renderAdminSettings() {
+function renderAdminSettings(filterTeam = '') {
   setTitle('Settings');
   setMain(`
     <div class="page-header"><h1>Settings</h1><p>Manage teams and user access</p></div>
@@ -2781,25 +2781,38 @@ function renderAdminSettings() {
     </div>
 
     <div class="settings-section" style="margin-top:2rem">
-      <h2 class="section-heading">User Access</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+        <h2 class="section-heading" style="margin:0">User Access</h2>
+        <select class="toolbar-select" onchange="renderAdminSettings(this.value)">
+          <option value="" ${filterTeam===''?'selected':''}>All Teams</option>
+          ${allTeams.map(t => `<option value="${t.id}" ${filterTeam===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}
+          <option value="__none__" ${filterTeam==='__none__'?'selected':''}>No Team</option>
+        </select>
+      </div>
       <div class="settings-list">
-        ${allUsers.map(u => {
-          const team = allTeams.find(t => t.id === u.teamId);
-          return `<div class="settings-list-item">
-            <div style="display:flex;align-items:center;gap:.75rem;min-width:0">
-              ${avatarHTML(u, 38, 'flex-shrink:0')}
-              <div style="min-width:0">
-                <div style="font-weight:600;font-size:.9rem">${esc(u.name)}</div>
-                <div style="font-size:.74rem;color:var(--text-muted)">${esc(u.email)} · ${team ? esc(team.name) : '<em>No team</em>'}</div>
+        ${allUsers
+          .filter(u => {
+            if (filterTeam === '__none__') return !u.teamId;
+            if (filterTeam) return u.teamId === filterTeam;
+            return true;
+          })
+          .map(u => {
+            const team = allTeams.find(t => t.id === u.teamId);
+            return `<div class="settings-list-item">
+              <div style="display:flex;align-items:center;gap:.75rem;min-width:0">
+                ${avatarHTML(u, 38, 'flex-shrink:0')}
+                <div style="min-width:0">
+                  <div style="font-weight:600;font-size:.9rem">${esc(u.name)}</div>
+                  <div style="font-size:.74rem;color:var(--text-muted)">${esc(u.email)} · ${team ? esc(team.name) : '<em>No team</em>'}</div>
+                </div>
               </div>
-            </div>
-            <div style="display:flex;gap:.4rem;align-items:center;flex-shrink:0">
-              ${u.isAdmin ? `<span class="badge badge-done">Admin</span>` : `<span class="badge badge-none">Learner</span>`}
-              ${u.id !== currentUser.id ? `<button class="btn btn-outline btn-sm" onclick="${u.isAdmin ? `demoteUser('${u.id}')` : `promoteUser('${u.id}')`}">${u.isAdmin ? '⬇' : '⬆'}</button>` : ''}
-              <button class="btn btn-outline btn-sm" onclick="showEditUserModal('${u.id}')">✏️</button>
-            </div>
-          </div>`;
-        }).join('')}
+              <div style="display:flex;gap:.4rem;align-items:center;flex-shrink:0">
+                ${u.isAdmin ? `<span class="badge badge-done">Admin</span>` : `<span class="badge badge-none">Learner</span>`}
+                ${u.id !== currentUser.id ? `<button class="btn btn-outline btn-sm" onclick="${u.isAdmin ? `demoteUser('${u.id}')` : `promoteUser('${u.id}')`}">${u.isAdmin ? '⬇' : '⬆'}</button>` : ''}
+                <button class="btn btn-outline btn-sm" onclick="showEditUserModal('${u.id}')">✏️</button>
+              </div>
+            </div>`;
+          }).join('')}
       </div>
     </div>`);
 }
