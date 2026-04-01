@@ -817,7 +817,7 @@ img { max-width: 100%; }
 .qbuilder-option input[type="radio"] { accent-color: var(--accent); }
 
 /* Assign modal */
-.assignee-list { display: flex; flex-direction: column; gap: .5rem; max-height: 240px; overflow-y: auto; }
+.assignee-list { display: flex; flex-direction: column; gap: .5rem; max-height: 420px; overflow-y: auto; }
 .assignee-item {
   display: flex; align-items: center; gap: .85rem;
   padding: .6rem .85rem; border: 1.5px solid var(--border);
