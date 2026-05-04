@@ -457,7 +457,7 @@ async function handleAuthUser(authUser) {
   if (!authUser) { currentUser = null; return; }
 
   const email = authUser.email || '';
-  if (!email.endsWith('@sprout.ph')) {
+  if (!email.endsWith('@sprout.ph') && !email.endsWith('@sproutsolutions.io')) {
     await sb.auth.signOut();
     currentUser = null;
     document.getElementById('app').innerHTML = `
@@ -469,7 +469,7 @@ async function handleAuthUser(authUser) {
           </div>
           <div style="font-size:2rem;margin-bottom:.5rem">🚫</div>
           <div style="font-weight:700;margin-bottom:.5rem">Access Denied</div>
-          <div style="color:var(--text-muted);font-size:.9rem;margin-bottom:1.5rem">Only @sprout.ph accounts are allowed.</div>
+          <div style="color:var(--text-muted);font-size:.9rem;margin-bottom:1.5rem">Only @sprout.ph and @sproutsolutions.io accounts are allowed.</div>
           <button class="btn btn-primary" onclick="googleLogin()">Try a different account</button>
         </div>
       </div>`;
@@ -716,7 +716,7 @@ function renderLogin() {
           <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z"/></svg>
           Sign in with Google
         </button>
-        <div style="margin-top:1rem;font-size:.78rem;color:var(--text-muted)">Only @sprout.ph accounts are allowed</div>
+        <div style="margin-top:1rem;font-size:.78rem;color:var(--text-muted)">Only @sprout.ph and @sproutsolutions.io accounts are allowed</div>
       </div>
     </div>`;
 }
@@ -1109,7 +1109,7 @@ function adminCourseCard(c) {
     ${adminCoverHTML(c)}
     <div class="course-card-body">
       <div class="course-card-badges">
-        ${typeBadge(c.type)} ${contentBadge(c.contentType)}
+        ${contentBadge(c.contentType)}
         ${qs ? `<span class="badge badge-q">${qs.length} Q</span>` : ''}
       </div>
       <div class="course-card-title">${esc(c.title)}</div>
@@ -1255,12 +1255,6 @@ function showCreateCourseModal() {
               ${CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('')}
             </select>
           </div>
-          <div class="form-group">
-            <label class="form-label">Type</label>
-            <select id="nc-type" class="form-select">
-              <option>Free</option><option>Paid</option>
-            </select>
-          </div>
         </div>
         <div class="form-group">
           <label class="form-label">YouTube Video ID (optional)</label>
@@ -1284,7 +1278,7 @@ function createCourse() {
     title,
     description: document.getElementById('nc-desc')?.value.trim() || '',
     category: document.getElementById('nc-cat')?.value || CATEGORIES[0],
-    type: document.getElementById('nc-type')?.value || 'Free',
+    type: 'Free',
     contentType: ytId ? 'youtube' : 'none',
     youtubeId: ytId || null,
     totalPages: 0,
@@ -1335,10 +1329,6 @@ function showAddUrlCourseModal(hint = '') {
             <select id="url-cat" class="form-select">
               ${CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('')}
             </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Type</label>
-            <select id="url-type" class="form-select"><option>Free</option><option>Paid</option></select>
           </div>
         </div>
         <p class="form-label" style="margin-bottom:.5rem">Assessment Questions</p>
@@ -1408,7 +1398,6 @@ async function submitUrlCourse() {
   const title = document.getElementById('url-title')?.value.trim();
   if (!title) { toast('Please enter a course title', 'error'); return; }
   const cat  = document.getElementById('url-cat')?.value || CATEGORIES[0];
-  const type = document.getElementById('url-type')?.value || 'Free';
   const mode = document.querySelector('input[name="url-mode"]:checked')?.value || 'ai';
   const courseId = nextCourseId();
 
@@ -1416,7 +1405,7 @@ async function submitUrlCourse() {
   showLoader('Adding course', 'Saving to database');
 
   const newCourse = {
-    id: courseId, title, description: '', category: cat, type,
+    id: courseId, title, description: '', category: cat, type: 'Free',
     contentType: detected.type,
     youtubeId: detected.type === 'youtube' ? detected.id : null,
     slidesUrl: detected.type === 'slides' ? urlVal : null,
@@ -1508,10 +1497,6 @@ function showAddScormModal() {
               ${CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('')}
             </select>
           </div>
-          <div class="form-group">
-            <label class="form-label">Type</label>
-            <select id="scorm-type" class="form-select"><option>Free</option><option>Paid</option></select>
-          </div>
         </div>
       </div>
       <div class="gmodal-footer">
@@ -1558,7 +1543,7 @@ async function submitScormUpload() {
   const title = document.getElementById('scorm-title')?.value.trim();
   if (!title) { toast('Please enter a course title', 'error'); return; }
   const cat  = document.getElementById('scorm-cat')?.value || CATEGORIES[0];
-  const type = document.getElementById('scorm-type')?.value || 'Free';
+  const type = 'Free';
   const desc = document.getElementById('scorm-desc')?.value.trim() || '';
 
   closeModal();
@@ -1651,18 +1636,9 @@ function showAddHtmlSlidesModal() {
             </select>
           </div>
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Type</label>
-            <select class="form-input" id="hs-type">
-              <option value="Free">Free</option>
-              <option value="Paid">Paid</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Description</label>
-            <input class="form-input" id="hs-desc" placeholder="Short description" />
-          </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <input class="form-input" id="hs-desc" placeholder="Short description" />
         </div>
         <div class="form-group">
           <label class="form-label">HTML File</label>
@@ -1692,7 +1668,7 @@ async function submitHtmlSlides() {
   if (!file && (!pastedHtml || pastedHtml.length < 20)) { toast('Upload an HTML file or paste HTML content', 'error'); return; }
 
   const cat  = document.getElementById('hs-cat')?.value  || CATEGORIES[0];
-  const type = document.getElementById('hs-type')?.value || 'Free';
+  const type = 'Free';
   const desc = document.getElementById('hs-desc')?.value.trim() || '';
 
   closeModal();
@@ -1756,10 +1732,6 @@ function showUploadModal() {
             <select id="upload-cat" class="form-select">
               ${CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('')}
             </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Type</label>
-            <select id="upload-type" class="form-select"><option>Free</option><option>Paid</option></select>
           </div>
         </div>
         <p class="form-label" style="margin-bottom:.5rem">Assessment Questions</p>
@@ -1868,7 +1840,7 @@ async function submitUpload() {
   if (!uploadedPdfData) { toast('Please select a PDF first', 'error'); return; }
   const title = document.getElementById('upload-title')?.value.trim() || 'Untitled Course';
   const cat   = document.getElementById('upload-cat')?.value || CATEGORIES[0];
-  const type  = document.getElementById('upload-type')?.value || 'Free';
+  const type = 'Free';
   const mode  = document.querySelector('input[name="upload-mode"]:checked')?.value || 'ai';
   const courseId = nextCourseId();
 
@@ -4318,22 +4290,36 @@ function renderLearnerDashboard() {
 }
 
 // ─── Learner Library ──────────────────────────────────────────────────────────
-function renderLearnerLibrary(filterQ = '', filterCat = '', filterType = '') {
+function renderLearnerLibrary(filterQ = '', filterCat = '') {
   setTitle('Course Library');
   const uid = currentUser.id;
   let filtered = courses.filter(c => {
-    const matchQ    = !filterQ    || c.title.toLowerCase().includes(filterQ.toLowerCase()) || c.category.toLowerCase().includes(filterQ.toLowerCase());
-    const matchCat  = !filterCat  || c.category === filterCat;
-    const matchType = !filterType || c.type === filterType;
-    return matchQ && matchCat && matchType;
+    const matchQ   = !filterQ   || c.title.toLowerCase().includes(filterQ.toLowerCase()) || c.category.toLowerCase().includes(filterQ.toLowerCase());
+    const matchCat = !filterCat || c.category === filterCat;
+    return matchQ && matchCat;
   });
 
-  const gridHTML = filtered.length ? filtered.map((c, i) => learnerCourseCard(c, uid, i)).join('') : '<div class="empty-state"><span class="empty-icon">📭</span><h2>No courses found</h2><p>Try different filters.</p></div>';
+  // Group by category in CATEGORIES order
+  const grouped = {};
+  let idx = 0;
+  filtered.forEach(c => {
+    if (!grouped[c.category]) grouped[c.category] = [];
+    grouped[c.category].push({ c, i: idx++ });
+  });
 
-  // Already on this page — only swap the grid to avoid re-animating everything
-  const existingGrid = document.querySelector('#main-content .course-grid');
-  if (existingGrid) {
-    existingGrid.innerHTML = gridHTML;
+  const sectionsHTML = filtered.length
+    ? CATEGORIES.filter(cat => grouped[cat]).map(cat =>
+        `<div class="library-section">
+          <div class="library-section-heading">${CAT_EMOJI[cat] || '📚'} ${esc(cat)}</div>
+          <div class="course-grid">${grouped[cat].map(({ c, i }) => learnerCourseCard(c, uid, i)).join('')}</div>
+        </div>`
+      ).join('')
+    : '<div class="empty-state"><span class="empty-icon">📭</span><h2>No courses found</h2><p>Try different filters.</p></div>';
+
+  // Already on this page — only swap the sections to avoid re-animating everything
+  const existingSections = document.querySelector('#main-content .library-sections');
+  if (existingSections) {
+    existingSections.innerHTML = sectionsHTML;
     const inp = document.querySelector('#main-content .toolbar-search input');
     if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
     return;
@@ -4344,19 +4330,14 @@ function renderLearnerLibrary(filterQ = '', filterCat = '', filterType = '') {
     <div class="toolbar">
       <div class="toolbar-search">
         <svg viewBox="0 0 20 20" fill="none"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.5"/><path d="M13 13L17 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        <input placeholder="Search courses…" value="${esc(filterQ)}" oninput="renderLearnerLibrary(this.value,document.getElementById('lib-cat')?.value,document.getElementById('lib-type')?.value)" />
+        <input placeholder="Search courses…" value="${esc(filterQ)}" oninput="renderLearnerLibrary(this.value,document.getElementById('lib-cat')?.value)" />
       </div>
-      <select class="toolbar-select" id="lib-cat" onchange="renderLearnerLibrary(document.querySelector('.toolbar-search input')?.value,this.value,document.getElementById('lib-type')?.value)">
+      <select class="toolbar-select" id="lib-cat" onchange="renderLearnerLibrary(document.querySelector('.toolbar-search input')?.value,this.value)">
         <option value="">All Categories</option>
         ${CATEGORIES.map(c => `<option value="${esc(c)}" ${filterCat===c?'selected':''}>${esc(c)}</option>`).join('')}
       </select>
-      <select class="toolbar-select" id="lib-type" onchange="renderLearnerLibrary(document.querySelector('.toolbar-search input')?.value,document.getElementById('lib-cat')?.value,this.value)">
-        <option value="">Free &amp; Paid</option>
-        <option value="Free" ${filterType==='Free'?'selected':''}>Free</option>
-        <option value="Paid" ${filterType==='Paid'?'selected':''}>Paid</option>
-      </select>
     </div>
-    <div class="course-grid">${gridHTML}</div>`);
+    <div class="library-sections">${sectionsHTML}</div>`);
 }
 
 function learnerCourseCard(c, uid, i = 0) {
@@ -4369,7 +4350,7 @@ function learnerCourseCard(c, uid, i = 0) {
     ${courseCoverHTML(c)}
     <div class="course-card-body">
       <div class="course-card-badges">
-        ${typeBadge(c.type)} ${contentBadge(c.contentType)}
+        ${contentBadge(c.contentType)}
         ${qs ? `<span class="badge badge-q">${qs.length} Q</span>` : ''}
         ${p.completed ? '<span class="badge badge-done">✓ Done</span>' : ''}
       </div>
@@ -4872,9 +4853,6 @@ function showCertificate(courseId) {
 }
 
 // ─── Badge Helpers ────────────────────────────────────────────────────────────
-function typeBadge(type) {
-  return `<span class="badge badge-${(type||'free').toLowerCase()}">${esc(type||'Free')}</span>`;
-}
 function contentBadge(type) {
   const map = { pdf: ['badge-pdf','PDF Slides'], youtube: ['badge-video','Video'], slides: ['badge-slides','Slides'], scorm: ['badge-scorm','SCORM'], html: ['badge-html','HTML Slides'], none: ['badge-none','Coming Soon'] };
   const [cls, label] = map[type] || map.none;

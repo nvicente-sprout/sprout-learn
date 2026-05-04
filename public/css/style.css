@@ -280,10 +280,16 @@ img { max-width: 100%; }
 }
 
 /* ─── Course Cards ────────────────────────────────────────────────────────── */
+.library-section { margin-bottom: 2.25rem; }
+.library-section-heading {
+  font-size: .95rem; font-weight: 700; color: var(--text);
+  margin-bottom: .85rem; display: flex; align-items: center; gap: .4rem;
+  padding-bottom: .5rem; border-bottom: 1.5px solid var(--border);
+}
 .course-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1.25rem;
 }
 .course-card {
   background: var(--card-bg);
