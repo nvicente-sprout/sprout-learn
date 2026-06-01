@@ -1,3 +1,5 @@
+import { config } from './config.js';
+
 // Vercel serverless function — proxies Gemini API so the key stays server-side
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -6,8 +8,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY not configured' });
+  const apiKey = config.geminiApiKey;
 
   const { text, courseTitle } = req.body || {};
   if (!text) return res.status(400).json({ error: 'text is required' });
@@ -19,11 +20,11 @@ export default async function handler(req, res) {
     const modelsRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
     const modelsData = await modelsRes.json();
     const available = (modelsData.models || [])
-      .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
-      .map(m => m.name.replace('models/', ''));
-    const ordered = preferred.filter(p => available.includes(p));
+      .filter(model => model.supportedGenerationMethods?.includes('generateContent'))
+      .map(model => model.name.replace('models/', ''));
+    const ordered = preferred.filter(preferredModel => available.includes(preferredModel));
     if (ordered.length) modelsToTry = ordered;
-  } catch (e) { /* use defaults */ }
+  } catch (error) { /* use defaults */ }
 
   const prompt = `You are an instructional designer. Based on this training content from "${courseTitle || 'this course'}", generate exactly 8 assessment questions: 5 multiple choice and 3 true/false.
 
@@ -58,8 +59,8 @@ ${String(text).slice(0, 4000)}`;
       }
       const data = await geminiRes.json();
       return res.status(200).json(data);
-    } catch (e) {
-      lastError = e.message;
+    } catch (error) {
+      lastError = error.message;
     }
   }
   return res.status(429).json({ error: `Quota exceeded on all models. Try again later. (${lastError})` });

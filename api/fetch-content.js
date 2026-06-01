@@ -12,8 +12,8 @@ export default async function handler(req, res) {
     try {
       const text = await fetchYoutubeTranscript(videoId);
       return res.status(200).json({ text });
-    } catch (e) {
-      return res.status(200).json({ text: '', error: e.message });
+    } catch (error) {
+      return res.status(200).json({ text: '', error: error.message });
     }
   }
 
@@ -21,8 +21,8 @@ export default async function handler(req, res) {
     try {
       const text = await fetchSlidesText(presentationId);
       return res.status(200).json({ text });
-    } catch (e) {
-      return res.status(200).json({ text: '', error: e.message });
+    } catch (error) {
+      return res.status(200).json({ text: '', error: error.message });
     }
   }
 
@@ -62,7 +62,7 @@ async function fetchYoutubeTranscript(videoId) {
   }
 
   // Prefer English track
-  const enUrl = urlMatches.find(m => m[0].includes('lang=en') || m[0].includes('lang%3Den'))?.[0]
+  const enUrl = urlMatches.find(match => match[0].includes('lang=en') || match[0].includes('lang%3Den'))?.[0]
              || urlMatches[0][0];
   const captionUrl = enUrl.replace(/\\\//g, '/').replace(/\\u0026/g, '&') + '&fmt=vtt';
 
@@ -74,7 +74,7 @@ async function fetchYoutubeTranscript(videoId) {
 function cleanVtt(vtt) {
   return vtt
     .split('\n')
-    .filter(l => l.trim() && !l.startsWith('WEBVTT') && !l.match(/^\d{2}:\d{2}/) && !l.startsWith('NOTE ') && !l.match(/^\d+$/))
+    .filter(line => line.trim() && !line.startsWith('WEBVTT') && !line.match(/^\d{2}:\d{2}/) && !line.startsWith('NOTE ') && !line.match(/^\d+$/))
     .join(' ')
     .replace(/<[^>]+>/g, '')
     .replace(/\s+/g, ' ')
