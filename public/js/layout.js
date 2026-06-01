@@ -163,11 +163,6 @@ async function saveProfile() {
   navigate(currentUser.isAdmin ? '/admin/dashboard' : '/learner/dashboard');
 }
 
-function logout() {
-  currentUser = null;
-  navigate('/login');
-}
-
 // ─── Layout ───────────────────────────────────────────────────────────────────
 function toggleLearnerView() {
   adminViewingAsLearner = !adminViewingAsLearner;
@@ -194,8 +189,8 @@ function renderLayout() {
   ];
 
   const tabs = navLinks.map(link => `
-    <a class="nav-tab ${currentRoute === l.href ? 'active' : ''}" href="#${l.href}">
-      <span class="nav-icon">${l.icon}</span>${esc(l.label)}
+    <a class="nav-tab ${currentRoute === link.href ? 'active' : ''}" href="#${link.href}">
+      <span class="nav-icon">${link.icon}</span>${esc(link.label)}
     </a>`).join('');
 
   document.getElementById('app').innerHTML = `

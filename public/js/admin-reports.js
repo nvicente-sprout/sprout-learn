@@ -511,13 +511,13 @@ function renderAdminReports() {
           <tbody>
             ${courseRows.length ? courseRows.map(courseRow => {
               const barColor = courseRow.passRate >= 70 ? '#2e7d32' : courseRow.passRate >= 40 ? '#f57c00' : courseRow.passRate > 0 ? '#c62828' : '#ccc';
-              return `<tr class="reports-table-row--clickable" onclick="openReportsCoursePanel('${courseRow.c.id}')">
+              return `<tr class="reports-table-row--clickable" onclick="openReportsCoursePanel('${courseRow.course.id}')">
                 <td>
                   <div style="display:flex;align-items:center;gap:.6rem">
-                    ${courseRow.c.coverUrl ? `<img src="${courseRow.c.coverUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0" />` : `<div style="width:36px;height:36px;border-radius:6px;background:#e8f5e9;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">${CAT_EMOJI[courseRow.c.category]||'📚'}</div>`}
+                    ${courseRow.course.coverUrl ? `<img src="${courseRow.course.coverUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0" />` : `<div style="width:36px;height:36px;border-radius:6px;background:#e8f5e9;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">${CAT_EMOJI[courseRow.course.category]||'📚'}</div>`}
                     <div>
-                      <div style="font-weight:600;font-size:.85rem">${esc(courseRow.c.title)}</div>
-                      <div style="font-size:.75rem;color:var(--text-muted)">${esc(courseRow.c.category)}</div>
+                      <div style="font-weight:600;font-size:.85rem">${esc(courseRow.course.title)}</div>
+                      <div style="font-size:.75rem;color:var(--text-muted)">${esc(courseRow.course.category)}</div>
                     </div>
                   </div>
                 </td>

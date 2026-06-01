@@ -728,7 +728,7 @@ function retakeAssessment(courseId) {
 // ─── Certificate ──────────────────────────────────────────────────────────────
 function showCertificate(courseId) {
   const course = getCourse(courseId);
-  const p      = getProgress(currentUser.id, courseId);
+  const prog   = getProgress(currentUser.id, courseId);
   showModal(`
     <div class="modal" onclick="event.stopPropagation()">
       <div class="cert-header" style="position:relative">
@@ -742,7 +742,7 @@ function showCertificate(courseId) {
         <div class="cert-learner">${esc(currentUser.name)}</div>
         <div class="cert-course-label">has successfully completed</div>
         <div class="cert-course">${esc(course?.title || '')}</div>
-        <div class="cert-score">with a score of <strong>${p.score ?? 100}%</strong></div>
+        <div class="cert-score">with a score of <strong>${prog.score ?? 100}%</strong></div>
         <div class="cert-sigs">
           <div class="cert-sig">
             <div style="height:30px"></div>

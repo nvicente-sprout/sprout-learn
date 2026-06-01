@@ -177,46 +177,46 @@ async function logout() {
 // ─── Realtime ─────────────────────────────────────────────────────────────────
 function subscribeRealtime() {
   sb.channel('assignments-live')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'assignments' }, ({ new: r }) => {
-      if (!assignments[r.user_id]) assignments[r.user_id] = [];
-      if (!assignments[r.user_id].includes(r.course_id)) assignments[r.user_id].push(r.course_id);
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'assignments' }, ({ new: row }) => {
+      if (!assignments[row.user_id]) assignments[row.user_id] = [];
+      if (!assignments[row.user_id].includes(row.course_id)) assignments[row.user_id].push(row.course_id);
       const hash = window.location.hash.slice(1);
-      if (currentUser?.id === r.user_id && hash === '/learner/dashboard') renderLearnerDashboard();
-      if (currentUser?.id === r.user_id && hash === '/learner/library') renderLearnerLibrary();
+      if (currentUser?.id === row.user_id && hash === '/learner/dashboard') renderLearnerDashboard();
+      if (currentUser?.id === row.user_id && hash === '/learner/library') renderLearnerLibrary();
       if (hash === '/admin/team') renderAdminTeam();
     })
-    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'assignments' }, ({ old: r }) => {
-      if (assignments[r.user_id])
-        assignments[r.user_id] = assignments[r.user_id].filter(cid => cid !== r.course_id);
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'assignments' }, ({ old: row }) => {
+      if (assignments[row.user_id])
+        assignments[row.user_id] = assignments[row.user_id].filter(cid => cid !== row.course_id);
       const hash = window.location.hash.slice(1);
-      if (currentUser?.id === r.user_id && hash === '/learner/dashboard') renderLearnerDashboard();
-      if (currentUser?.id === r.user_id && hash === '/learner/library') renderLearnerLibrary();
+      if (currentUser?.id === row.user_id && hash === '/learner/dashboard') renderLearnerDashboard();
+      if (currentUser?.id === row.user_id && hash === '/learner/library') renderLearnerLibrary();
       if (hash === '/admin/team') renderAdminTeam();
     })
     .subscribe();
 
   // Realtime questions — learners always get the latest version
   sb.channel('questions-live')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, ({ new: r, eventType }) => {
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, ({ new: row, eventType }) => {
       if (eventType === 'DELETE') {
-        delete questions[r.course_id];
-      } else if (r?.course_id) {
-        questions[r.course_id] = r.questions_json;
+        delete questions[row.course_id];
+      } else if (row?.course_id) {
+        questions[row.course_id] = row.questions_json;
       }
     })
     .subscribe();
 
   // Realtime progress — keeps leaderboard/reports live without refresh
   sb.channel('progress-live')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'progress' }, ({ new: r, eventType }) => {
-      if (!r?.user_id) return;
-      const key = `${r.user_id}_${r.course_id}`;
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'progress' }, ({ new: row, eventType }) => {
+      if (!row?.user_id) return;
+      const key = `${row.user_id}_${row.course_id}`;
       if (eventType === 'DELETE') {
         delete progress[key];
       } else {
         progress[key] = {
-          currentSlide: r.current_slide, completed: r.completed,
-          score: r.score, passed: r.passed,
+          currentSlide: row.current_slide, completed: row.completed,
+          score: row.score, passed: row.passed,
         };
       }
       const hash = window.location.hash.slice(1);
@@ -229,11 +229,11 @@ function subscribeRealtime() {
 
   // Realtime notifications
   sb.channel('notifications-live')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, ({ new: n }) => {
-      const isForMe = n.user_id === null ? currentUser?.isAdmin : n.user_id === currentUser?.id;
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, ({ new: notif }) => {
+      const isForMe = notif.user_id === null ? currentUser?.isAdmin : notif.user_id === currentUser?.id;
       if (!isForMe) return;
-      if (notifications.find(existing => existing.id === n.id)) return; // dedupe (we may have added it locally already)
-      notifications.unshift(n);
+      if (notifications.find(existing => existing.id === notif.id)) return; // dedupe (we may have added it locally already)
+      notifications.unshift(notif);
       updateBellBadge();
       // Pulse the bell
       document.getElementById('bell-btn')?.classList.add('bell-pulse');

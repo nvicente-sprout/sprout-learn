@@ -113,14 +113,14 @@ function toggleAssignAll(courseId, filterTeamId = '') {
   const targets = filterTeamId ? learners().filter(user => user.teamId === filterTeamId) : learners();
   const allAssigned = targets.every(user => isAssigned(user.id, courseId));
   targets.forEach(user => {
-    if (!assignments[u.id]) assignments[u.id] = [];
+    if (!assignments[user.id]) assignments[user.id] = [];
     if (allAssigned) {
-      assignments[u.id] = assignments[u.id].filter(cid => cid !== courseId);
-      sb.from('assignments').delete().eq('user_id', u.id).eq('course_id', courseId)
+      assignments[user.id] = assignments[user.id].filter(cid => cid !== courseId);
+      sb.from('assignments').delete().eq('user_id', user.id).eq('course_id', courseId)
         .then(({ error }) => { if (error) { console.error('Assignment delete:', error); toast('Failed to unassign: ' + error.message, 'error'); } });
-    } else if (!isAssigned(u.id, courseId)) {
-      assignments[u.id].push(courseId);
-      sb.from('assignments').upsert({ user_id: u.id, course_id: courseId })
+    } else if (!isAssigned(user.id, courseId)) {
+      assignments[user.id].push(courseId);
+      sb.from('assignments').upsert({ user_id: user.id, course_id: courseId })
         .then(({ error }) => { if (error) { console.error('Assignment insert:', error); toast('Failed to assign: ' + error.message, 'error'); } });
     }
   });

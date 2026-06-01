@@ -1027,18 +1027,18 @@ function builderQuestionHTML(question, index) {
   } else {
     return `<div class="qbuilder-item">
       <div class="qbuilder-item-header">
-        <span class="qbuilder-item-num">Q${i+1} · True/False</span>
-        <button class="btn btn-danger btn-sm qbuilder-item-remove" onclick="removeBuilderQ(${i})">Remove</button>
+        <span class="qbuilder-item-num">Q${index+1} · True/False</span>
+        <button class="btn btn-danger btn-sm qbuilder-item-remove" onclick="removeBuilderQ(${index})">Remove</button>
       </div>
       <div class="form-group" style="margin-bottom:.6rem">
-        <input class="form-input" placeholder="Question text" value="${esc(q.question)}" oninput="builderQuestions[${i}].question=this.value" />
+        <input class="form-input" placeholder="Question text" value="${esc(question.question)}" oninput="builderQuestions[${index}].question=this.value" />
       </div>
       <div style="display:flex;gap:.75rem">
         <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer">
-          <input type="radio" name="tf-${i}" ${q.correct===true?'checked':''} onchange="builderQuestions[${i}].correct=true" /> True
+          <input type="radio" name="tf-${index}" ${question.correct===true?'checked':''} onchange="builderQuestions[${index}].correct=true" /> True
         </label>
         <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer">
-          <input type="radio" name="tf-${i}" ${q.correct===false?'checked':''} onchange="builderQuestions[${i}].correct=false" /> False
+          <input type="radio" name="tf-${index}" ${question.correct===false?'checked':''} onchange="builderQuestions[${index}].correct=false" /> False
         </label>
       </div>
     </div>`;
