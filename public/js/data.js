@@ -8,6 +8,7 @@ function courseFromRow(row) {
     slidesUrl: row.slides_url || null,
     scormUrl: row.content_type === 'scorm' ? (row.scorm_url || null) : null,
     htmlUrl:  row.content_type === 'html'  ? (row.scorm_url || null) : null,
+    createdBy: row.created_by || null,
   };
 }
 function courseToRow(course) {

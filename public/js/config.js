@@ -66,3 +66,61 @@ let _duckGame     = null;
 let learningPaths = [];
 let _pathCourseIds = []; // path builder state
 
+// ─── Changelog ────────────────────────────────────────────────────────────────
+const CHANGELOG = [
+  {
+    version: '1.5',
+    date: 'June 2026',
+    label: 'Podium, Role Filter & Publishers',
+    changes: [
+      'Learner dashboard now shows a podium-style team leaderboard (your team only)',
+      'Settings now supports filtering members by Admin or Learner role',
+      'Course cards show the publisher name when available',
+    ],
+  },
+  {
+    version: '1.4',
+    date: 'June 2026',
+    label: 'Filters, Stats & CSV Export',
+    changes: [
+      'Fixed category filter in Courses tab (admin and learner view)',
+      'Team Progress cards now show Assigned / Completed / Avg Progress stat boxes',
+      'Export CSV now supports per-course filtering with checkboxes',
+      'Per-course CSV includes Name, Team, Email, Course, Status, and Score columns',
+    ],
+  },
+  {
+    version: '1.3',
+    date: 'June 2026',
+    label: 'Learning Paths & File Uploads',
+    changes: [
+      'Added Learning Paths — group courses into structured programs',
+      'Admins can upload local HTML files as course slides',
+      'Fixed leaderboard XP calculation and stale assignment display',
+      'Cleaned up orphaned team assignments',
+    ],
+  },
+  {
+    version: '1.2',
+    date: 'May 2026',
+    label: 'Code Stability & Naming Fixes',
+    changes: [
+      'Fixed broken post-login rendering (layout crash on navigation)',
+      'Resolved broken question builder after MC/TF branch rename',
+      'Fixed reports table showing blank course data',
+      'Renamed all single-letter variables to descriptive names throughout',
+    ],
+  },
+  {
+    version: '1.1',
+    date: 'April 2026',
+    label: 'Modular Rewrite & Config Cleanup',
+    changes: [
+      'Split monolithic app.js into 10 focused modules',
+      'Added .env.example with placeholder-only values',
+      'Added single env reader for all serverless functions',
+      'Documented SSO migration path to Keycloak',
+    ],
+  },
+];
+

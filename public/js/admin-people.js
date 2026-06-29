@@ -188,13 +188,14 @@ function renderAdminTeam(filterTeam = '', filterCourse = '', searchQ = '', sortB
           <div class="progress-bar-wrap"><div class="progress-bar" style="width:0%"></div></div>`;
       }
     } else {
+      const avgColor = avg >= 70 ? '#2e7d32' : avg >= 40 ? '#e65100' : '#757575';
       progressBlock = `
-        <div class="member-stats">
-          <span><strong>${assigned}</strong> assigned</span>
-          <span><strong>${done}</strong> completed</span>
-          <span><strong>${avg}%</strong> avg</span>
+        <div class="member-stat-row">
+          <div class="member-stat-box"><strong>${assigned}</strong><span>Assigned</span></div>
+          <div class="member-stat-box"><strong>${done}</strong><span>Completed</span></div>
+          <div class="member-stat-box"><strong style="color:${avgColor}">${avg}%</strong><span>Avg Progress</span></div>
         </div>
-        <div class="progress-bar-wrap"><div class="progress-bar" style="width:${avg}%"></div></div>`;
+        <div class="progress-bar-wrap"><div class="progress-bar" style="width:${avg}%;background:${avgColor}"></div></div>`;
     }
 
     return `<div class="member-card" style="animation-delay:${cardIndex*0.05}s">
@@ -205,7 +206,6 @@ function renderAdminTeam(filterTeam = '', filterCourse = '', searchQ = '', sortB
           <div class="member-role">${esc(allTeams.find(team=>team.id===user.teamId)?.name||'No team')}</div>
           <div style="font-size:.72rem;color:var(--text-muted)">${esc(user.email)}</div>
         </div>
-        <span class="badge" style="background:${badgeColor};color:white">${done}/${assigned}</span>
       </div>
       ${progressBlock}
       <div style="display:flex;gap:.5rem;margin-top:.5rem">

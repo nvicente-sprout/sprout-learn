@@ -1,5 +1,5 @@
 ﻿// ─── Settings ─────────────────────────────────────────────────────────────────
-function renderAdminSettings(filterTeam = '') {
+function renderAdminSettings(filterTeam = '', filterRole = '') {
   setTitle('Settings');
   setMain(`
     <div class="page-header"><h1>Settings</h1><p>Manage teams and user access</p></div>
@@ -47,17 +47,26 @@ function renderAdminSettings(filterTeam = '') {
     <div class="settings-section" style="margin-top:2rem">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
         <h2 class="section-heading" style="margin:0">User Access</h2>
-        <select id="settings-team-filter" class="toolbar-select" onchange="renderAdminSettings(this.value)">
-          <option value="" ${filterTeam===''?'selected':''}>All Teams</option>
-          ${allTeams.map(team => `<option value="${team.id}" ${filterTeam===team.id?'selected':''}>${esc(team.name)}</option>`).join('')}
-          <option value="__none__" ${filterTeam==='__none__'?'selected':''}>No Team</option>
-        </select>
+        <div style="display:flex;gap:.5rem">
+          <select id="settings-role-filter" class="toolbar-select" onchange="renderAdminSettings(document.getElementById('settings-team-filter')?.value||'', this.value)">
+            <option value="" ${filterRole===''?'selected':''}>All Roles</option>
+            <option value="admin" ${filterRole==='admin'?'selected':''}>Admins only</option>
+            <option value="learner" ${filterRole==='learner'?'selected':''}>Learners only</option>
+          </select>
+          <select id="settings-team-filter" class="toolbar-select" onchange="renderAdminSettings(this.value, document.getElementById('settings-role-filter')?.value||'')">
+            <option value="" ${filterTeam===''?'selected':''}>All Teams</option>
+            ${allTeams.map(team => `<option value="${team.id}" ${filterTeam===team.id?'selected':''}>${esc(team.name)}</option>`).join('')}
+            <option value="__none__" ${filterTeam==='__none__'?'selected':''}>No Team</option>
+          </select>
+        </div>
       </div>
       <div class="settings-list">
         ${allUsers
           .filter(member => {
-            if (filterTeam === '__none__') return !member.teamId;
-            if (filterTeam) return member.teamId === filterTeam;
+            if (filterTeam === '__none__' && member.teamId) return false;
+            if (filterTeam && filterTeam !== '__none__' && member.teamId !== filterTeam) return false;
+            if (filterRole === 'admin') return member.isAdmin;
+            if (filterRole === 'learner') return !member.isAdmin;
             return true;
           })
           .map(member => {
@@ -192,9 +201,10 @@ async function saveUserEdit(userId) {
   const user = getUser(userId);
   if (user) { user.name = name; user.teamId = teamId; }
   const prevFilter = document.getElementById('settings-team-filter')?.value || '';
+  const prevRole   = document.getElementById('settings-role-filter')?.value || '';
   closeModal();
   toast('Saved!');
-  renderAdminSettings(prevFilter);
+  renderAdminSettings(prevFilter, prevRole);
 }
 
 // ─── Leaderboard (shared admin/learner) ───────────────────────────────────────
@@ -336,8 +346,8 @@ function renderLeaderboard(isAdmin, filterCourseId) {
         <div class="badges-grid">
           ${BADGES.map(badge => `
             <div class="badge-card">
-              <span class="badge-card-icon">${b.icon}</span>
-              <div><div style="font-weight:700;font-size:.85rem">${b.label}</div><div style="font-size:.75rem;color:var(--text-muted)">${b.desc}</div></div>
+              <span class="badge-card-icon">${badge.icon}</span>
+              <div><div style="font-weight:700;font-size:.85rem">${badge.label}</div><div style="font-size:.75rem;color:var(--text-muted)">${badge.desc}</div></div>
             </div>`).join('')}
         </div>
       </div>
@@ -410,7 +420,7 @@ function renderAdminReports() {
         <h1>Reports</h1>
         <p>Learning analytics and team performance</p>
       </div>
-      <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="exportReportsCsv()">⬇ Export CSV</button>
+      <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="showExportModal()">⬇ Export CSV</button>
     </div>
 
     <div class="stats-grid">
@@ -545,23 +555,99 @@ function renderAdminReports() {
   });
 }
 
+function showExportModal() {
+  const exportableCourses = courses.filter(course => course.published !== false);
+  showModal(`
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="gmodal-header">
+        <h2>Export Report CSV</h2>
+        <button class="gmodal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="gmodal-body">
+        <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1rem">Select courses to export per-learner data. Leave all unchecked to export an overall learner summary.</p>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+          <div style="font-size:.82rem;font-weight:700;color:var(--text)">Courses</div>
+          <button class="btn btn-outline btn-sm" onclick="toggleAllExportCourses()">Select All</button>
+        </div>
+        <div style="max-height:240px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
+          ${exportableCourses.map(course => `
+            <label class="export-course-option">
+              <input type="checkbox" class="export-course-cb" value="${course.id}" onchange="updateExportPreview()" />
+              <div style="min-width:0;flex:1">
+                <div style="font-size:.85rem;font-weight:600">${esc(course.title)}</div>
+                <div style="font-size:.75rem;color:var(--text-muted)">${esc(course.category)}</div>
+              </div>
+            </label>`).join('')}
+        </div>
+        <div id="export-preview" style="margin-top:1rem;font-size:.78rem;color:var(--text-muted);background:#f9fbf9;border-radius:8px;padding:.6rem .75rem;border:1px solid var(--border)">
+          <strong>Columns:</strong> Name, Team, Email, Assigned, Completed, Avg Progress %, Avg Score %
+        </div>
+      </div>
+      <div class="gmodal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="exportReportsCsv()">⬇ Download CSV</button>
+      </div>
+    </div>`);
+}
+
+function toggleAllExportCourses() {
+  const checkboxes = document.querySelectorAll('.export-course-cb');
+  const allChecked = Array.from(checkboxes).every(checkbox => checkbox.checked);
+  checkboxes.forEach(checkbox => { checkbox.checked = !allChecked; });
+  updateExportPreview();
+}
+
+function updateExportPreview() {
+  const selectedCount = document.querySelectorAll('.export-course-cb:checked').length;
+  const preview = document.getElementById('export-preview');
+  if (!preview) return;
+  if (selectedCount === 0) {
+    preview.innerHTML = '<strong>Columns:</strong> Name, Team, Email, Assigned, Completed, Avg Progress %, Avg Score %';
+  } else {
+    preview.innerHTML = `<strong>Columns:</strong> Name, Team, Email, Course, Status, Score %<br><span style="margin-top:.25rem;display:block"><strong>${selectedCount} course${selectedCount !== 1 ? 's' : ''}</strong> selected — one row per learner per course</span>`;
+  }
+}
+
 function exportReportsCsv() {
+  const selectedIds = Array.from(document.querySelectorAll('.export-course-cb:checked')).map(checkbox => checkbox.value);
   const allLearners = learners();
-  const rows = [['Name','Team','Email','Assigned','Completed','Avg Progress %','Avg Score %']];
-  allLearners.forEach(user => {
-    const teamName = allTeams.find(team=>team.id===user.teamId)?.name || '';
-    const assigned  = getUserAssignments(user.id).length;
-    const completed = userCompletions(user.id);
-    const avgProg   = userAvgProgress(user.id);
-    const scores    = getUserAssignments(user.id).map(cid => getProgress(user.id, cid)).filter(progressEntry=>progressEntry.score!==null&&progressEntry.score!==undefined).map(progressEntry=>progressEntry.score);
-    const avgSc     = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0)/scores.length) : '';
-    rows.push([user.name, teamName, user.email, assigned, completed, avgProg, avgSc]);
-  });
-  const csv = rows.map(row => row.map(value => `"${String(value).replace(/"/g,'""')}"`).join(',')).join('\n');
+  let rows, filename;
+
+  if (selectedIds.length === 0) {
+    rows = [['Name', 'Team', 'Email', 'Assigned', 'Completed', 'Avg Progress %', 'Avg Score %']];
+    allLearners.forEach(user => {
+      const teamName = allTeams.find(team => team.id === user.teamId)?.name || '';
+      const assigned  = getUserAssignments(user.id).length;
+      const completed = userCompletions(user.id);
+      const avgProg   = userAvgProgress(user.id);
+      const scores    = getUserAssignments(user.id).map(cid => getProgress(user.id, cid)).filter(progressEntry => progressEntry.score !== null && progressEntry.score !== undefined).map(progressEntry => progressEntry.score);
+      const avgSc     = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : '';
+      rows.push([user.name, teamName, user.email, assigned, completed, avgProg, avgSc]);
+    });
+    filename = `sprout-learn-report-${new Date().toISOString().slice(0, 10)}.csv`;
+  } else {
+    rows = [['Name', 'Team', 'Email', 'Course', 'Status', 'Score %']];
+    selectedIds.forEach(courseId => {
+      const course = getCourse(courseId);
+      if (!course) return;
+      const assignedUsers = allLearners.filter(user => isAssigned(user.id, courseId));
+      assignedUsers.forEach(user => {
+        const teamName = allTeams.find(team => team.id === user.teamId)?.name || '';
+        const progressEntry = getProgress(user.id, courseId);
+        const status = progressEntry.completed ? 'Completed' : progressEntry.currentSlide > 0 ? 'In Progress' : 'Not Started';
+        const score  = progressEntry.score !== null && progressEntry.score !== undefined ? progressEntry.score : '';
+        rows.push([user.name, teamName, user.email, course.title, status, score]);
+      });
+    });
+    filename = `sprout-learn-courses-${new Date().toISOString().slice(0, 10)}.csv`;
+  }
+
+  const csv = rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
   const anchor = document.createElement('a');
   anchor.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-  anchor.download = `sprout-learn-report-${new Date().toISOString().slice(0,10)}.csv`;
+  anchor.download = filename;
   anchor.click();
+  closeModal();
 }
 
 // ─── Reports Detail Pages ─────────────────────────────────────────────────────

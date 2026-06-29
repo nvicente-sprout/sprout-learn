@@ -115,8 +115,35 @@ function renderLogin() {
           Sign in with Google
         </button>
         <div style="margin-top:1rem;font-size:.78rem;color:var(--text-muted)">Only @sprout.ph and @sproutsolutions.io accounts are allowed</div>
+        ${(location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? `
+          <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px dashed var(--border)">
+            <button class="btn btn-outline" style="width:100%;font-size:.8rem;color:var(--text-muted)" onclick="devLogin()">🛠 Dev Login (localhost only)</button>
+          </div>` : ''}
       </div>
     </div>`;
+}
+
+// LOCAL-ONLY: dev bypass for localhost testing — never runs on production (hostname guard)
+async function devLogin() {
+  if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return;
+  showLoader('Loading dev session', '');
+  await loadData();
+  hideLoader();
+  if (allUsers.length > 0) {
+    currentUser = allUsers.find(user => user.isAdmin) || allUsers[0];
+  } else {
+    currentUser = {
+      id: 'dev-user',
+      email: 'dev@sprout.ph',
+      name: 'Dev User',
+      isAdmin: true,
+      teamId: allTeams[0]?.id || null,
+      avatarUrl: null,
+      color: USER_COLORS[0],
+    };
+  }
+  await loadNotifications();
+  navigate(currentUser.isAdmin && !adminViewingAsLearner ? '/admin/dashboard' : '/learner/dashboard');
 }
 
 function renderCompleteProfile() {
@@ -204,6 +231,12 @@ function renderLayout() {
           <nav class="header-nav">${tabs}</nav>
           <div class="header-user">
             ${currentUser.isAdmin ? `<button class="btn-view-toggle" onclick="toggleLearnerView()">${adminViewingAsLearner ? '⚙️ Admin View' : '👁 Learner View'}</button>` : ''}
+            <div class="changelog-wrap" id="changelog-wrap">
+              <button class="changelog-btn" id="changelog-btn" onclick="toggleChangelogPanel()" aria-label="What's new">
+                ✨
+              </button>
+              <div class="changelog-panel" id="changelog-panel" data-open="false" style="display:none"></div>
+            </div>
             <div class="notif-wrap" id="notif-wrap">
               <button class="bell-btn" id="bell-btn" onclick="toggleNotifPanel()" aria-label="Notifications">
                 ${iconBell()}
@@ -368,13 +401,55 @@ function openReportsCoursePanel(courseId) {
 }
 
 document.addEventListener('click', (e) => {
-  const wrap = document.getElementById('notif-wrap');
-  const panel = document.getElementById('notif-panel');
-  if (panel && panel.dataset.open === 'true' && wrap && !wrap.contains(e.target)) {
-    panel.dataset.open = 'false';
-    panel.style.display = 'none';
+  const notifWrap = document.getElementById('notif-wrap');
+  const notifPanel = document.getElementById('notif-panel');
+  if (notifPanel && notifPanel.dataset.open === 'true' && notifWrap && !notifWrap.contains(e.target)) {
+    notifPanel.dataset.open = 'false';
+    notifPanel.style.display = 'none';
+  }
+
+  const changelogWrap = document.getElementById('changelog-wrap');
+  const changelogPanel = document.getElementById('changelog-panel');
+  if (changelogPanel && changelogPanel.dataset.open === 'true' && changelogWrap && !changelogWrap.contains(e.target)) {
+    changelogPanel.dataset.open = 'false';
+    changelogPanel.style.display = 'none';
   }
 });
+
+function toggleChangelogPanel() {
+  const panel = document.getElementById('changelog-panel');
+  if (!panel) return;
+  const isOpen = panel.dataset.open === 'true';
+  if (isOpen) {
+    panel.dataset.open = 'false';
+    panel.style.display = 'none';
+  } else {
+    renderChangelogPanel();
+    panel.dataset.open = 'true';
+    panel.style.display = '';
+  }
+}
+
+function renderChangelogPanel() {
+  const panel = document.getElementById('changelog-panel');
+  if (!panel) return;
+  const entries = CHANGELOG.map(entry => `
+    <div class="changelog-entry">
+      <div class="changelog-entry-header">
+        <span class="changelog-version">v${esc(entry.version)}</span>
+        <span class="changelog-label">${esc(entry.label)}</span>
+        <span class="changelog-date">${esc(entry.date)}</span>
+      </div>
+      <ul class="changelog-bullets">
+        ${entry.changes.map(change => `<li>${esc(change)}</li>`).join('')}
+      </ul>
+    </div>`).join('');
+  panel.innerHTML = `
+    <div class="notif-header">
+      <span class="notif-title">✨ What's New</span>
+    </div>
+    <div class="changelog-list">${entries}</div>`;
+}
 
 function setMain(html) {
   const el = document.getElementById('main-content');

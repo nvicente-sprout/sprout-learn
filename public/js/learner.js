@@ -9,53 +9,58 @@ function renderLearnerDashboard() {
   const continueList = assigned
     .filter(cid => !getProgress(uid, cid).completed);
 
-  // ── Team performance widget ──────────────────────────────────────────────
+  // ── Team podium widget ───────────────────────────────────────────────────
   const myTeam = allTeams.find(team => team.id === currentUser.teamId);
-  const teamStandings = allTeams.map(team => {
-    const members  = learners().filter(user => user.teamId === team.id);
-    const tAssigned  = members.reduce((sum, user) => sum + getUserAssignments(user.id).length, 0);
-    const tCompleted = members.reduce((sum, user) => sum + userCompletions(user.id), 0);
-    const rate = tAssigned ? Math.round((tCompleted / tAssigned) * 100) : 0;
-    const scores = members.flatMap(user =>
-      getUserAssignments(user.id).map(cid => getProgress(user.id, cid)).filter(progressEntry => progressEntry.score !== null && progressEntry.score !== undefined).map(progressEntry => progressEntry.score)
-    );
-    const avgSc = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0)/scores.length) : null;
-    return { team, members: members.length, tAssigned, tCompleted, rate, avgSc };
-  }).sort((itemA, itemB) => itemB.rate - itemA.rate);
+  const podiumMembers = myTeam
+    ? learners()
+        .filter(user => user.teamId === currentUser.teamId)
+        .map(user => ({ ...user, xp: userXP(user.id), completions: userCompletions(user.id) }))
+        .sort((userA, userB) => userB.xp - userA.xp || userB.completions - userA.completions)
+    : [];
+  const myPodiumRank = podiumMembers.findIndex(user => user.id === currentUser.id) + 1;
 
-  const myTeamData  = myTeam ? teamStandings.find(standing => standing.team.id === myTeam.id) : null;
-  const myTeamRank  = myTeam ? teamStandings.findIndex(standing => standing.team.id === myTeam.id) + 1 : null;
-  const maxRate     = Math.max(...teamStandings.map(standing => standing.rate), 1);
-  const rankSuffix  = n => ['','st','nd','rd'][n] || 'th';
-
-  const teamWidget = myTeamData ? `
+  const teamWidget = myTeam && podiumMembers.length > 0 ? `
     <div class="ld-team-card">
       <div class="ld-team-header">
         <div>
-          <div class="ld-team-name">${esc(myTeam.name)}</div>
-          <div class="ld-team-sub">${myTeamRank}${rankSuffix(myTeamRank)} place &nbsp;·&nbsp; ${myTeamData.members} member${myTeamData.members!==1?'s':''}</div>
-        </div>
-        <div class="ld-team-stats">
-          <div class="ld-team-stat"><span>${myTeamData.rate}%</span>Completion</div>
-          <div class="ld-team-stat"><span>${myTeamData.avgSc !== null ? myTeamData.avgSc+'%' : '—'}</span>Avg Score</div>
-          <div class="ld-team-stat"><span>${myTeamData.tCompleted}</span>Done</div>
+          <div class="ld-team-name">🏆 ${esc(myTeam.name)}</div>
+          <div class="ld-team-sub">Your rank: #${myPodiumRank} of ${podiumMembers.length} teammate${podiumMembers.length !== 1 ? 's' : ''}</div>
         </div>
       </div>
-      <div class="ld-team-standings">
-        ${teamStandings.map((standing, standingIndex) => {
-          const isMe = myTeam && standing.team.id === myTeam.id;
-          const bar  = maxRate > 0 ? Math.round((standing.rate / maxRate) * 100) : 0;
-          const medals = ['🥇','🥈','🥉'];
-          return `<div class="ld-team-row${isMe?' ld-team-row--me':''}">
-            <div class="ld-team-row-rank">${medals[standingIndex]||`#${standingIndex+1}`}</div>
-            <div class="ld-team-row-name">${esc(standing.team.name)}${isMe?'<span class="ld-you-badge">You</span>':''}</div>
-            <div class="ld-team-bar-wrap">
-              <div class="ld-team-bar-fill" style="width:${bar}%;background:${isMe?'var(--accent-dark)':'#a8d5a8'}"></div>
+      ${podiumMembers.length >= 2 ? `
+      <div class="ld-podium">
+        ${[podiumMembers[1], podiumMembers[0], podiumMembers[2]].map((user, podiumIndex) => {
+          if (!user) return '<div class="ld-podium-col"></div>';
+          const podiumHeights = ['90px', '120px', '70px'];
+          const podiumMedals = ['🥈', '🥇', '🥉'];
+          const isMe = user.id === currentUser.id;
+          return `<div class="ld-podium-col${isMe ? ' ld-podium-col--me' : ''}">
+            ${avatarHTML(user, 38)}
+            <div class="ld-podium-name">${esc(user.name.split(' ')[0])}${isMe ? ' <span class="ld-you-badge">You</span>' : ''}</div>
+            <div class="ld-podium-xp">${user.xp} XP</div>
+            <div class="ld-podium-block" style="height:${podiumHeights[podiumIndex]}">
+              <span class="ld-podium-medal">${podiumMedals[podiumIndex]}</span>
             </div>
-            <div class="ld-team-row-rate">${standing.rate}%</div>
           </div>`;
         }).join('')}
-      </div>
+      </div>` : `
+      <div style="display:flex;align-items:center;gap:.75rem;padding:.75rem 0">
+        ${avatarHTML(podiumMembers[0], 36)}
+        <div><div style="font-weight:700;font-size:.88rem">${esc(podiumMembers[0].name)}</div><div style="font-size:.75rem;color:var(--text-muted)">${podiumMembers[0].xp} XP</div></div>
+        <span style="margin-left:auto;font-size:1.3rem">🥇</span>
+      </div>`}
+      ${podiumMembers.length > 3 ? `
+      <div class="ld-podium-rest">
+        ${podiumMembers.slice(3).map((user, restIndex) => {
+          const isMe = user.id === currentUser.id;
+          return `<div class="ld-podium-rest-row${isMe ? ' ld-podium-rest-row--me' : ''}">
+            <span class="ld-podium-rest-rank">#${restIndex + 4}</span>
+            ${avatarHTML(user, 26)}
+            <span class="ld-podium-rest-name">${esc(user.name)}${isMe ? ' <span class="ld-you-badge">You</span>' : ''}</span>
+            <span class="ld-podium-rest-xp">${user.xp} XP</span>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
     </div>` : '';
 
   setMain(`
@@ -203,8 +208,8 @@ function renderLearnerLibrary(filterQ = '', filterCat = '') {
   setTitle('Course Library');
   const uid = currentUser.id;
   let filtered = courses.filter(course => {
-    const matchQ   = !filterQ   || c.title.toLowerCase().includes(filterQ.toLowerCase()) || c.category.toLowerCase().includes(filterQ.toLowerCase());
-    const matchCat = !filterCat || c.category === filterCat;
+    const matchQ   = !filterQ   || course.title.toLowerCase().includes(filterQ.toLowerCase()) || course.category.toLowerCase().includes(filterQ.toLowerCase());
+    const matchCat = !filterCat || course.category === filterCat;
     return matchQ && matchCat;
   });
 
@@ -266,6 +271,7 @@ function learnerCourseCard(course, uid, cardIndex = 0) {
       <div class="course-card-title">${esc(course.title)}</div>
       <div class="course-card-desc">${esc(course.description)}</div>
       <div class="course-card-meta">${CAT_EMOJI[course.category]||'📚'} ${esc(course.category)}</div>
+      ${course.createdBy ? `<div class="course-card-publisher">by ${esc(allUsers.find(user => user.id === course.createdBy)?.name || 'Unknown')}</div>` : ''}
       ${assigned && course.totalPages ? `<div class="progress-bar-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>` : ''}
       <div class="course-card-actions">
         ${assigned ? `<a href="#/course/${course.id}" class="btn btn-primary btn-sm">${label}</a>` : `<span class="btn btn-outline btn-sm" style="opacity:.6;cursor:default">Not Assigned</span>`}

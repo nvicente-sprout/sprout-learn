@@ -58,8 +58,8 @@ function lbItem(user, rank) {
 function renderAdminCourses(filterQ = '', filterCat = '') {
   setTitle('Courses');
   let filtered = courses.filter(course => {
-    const matchQ   = !filterQ   || c.title.toLowerCase().includes(filterQ.toLowerCase()) || c.category.toLowerCase().includes(filterQ.toLowerCase());
-    const matchCat = !filterCat || c.category === filterCat;
+    const matchQ   = !filterQ   || course.title.toLowerCase().includes(filterQ.toLowerCase()) || course.category.toLowerCase().includes(filterQ.toLowerCase());
+    const matchCat = !filterCat || course.category === filterCat;
     return matchQ && matchCat;
   });
 
@@ -124,6 +124,7 @@ function adminCourseCard(course) {
       <div class="course-card-title">${esc(course.title)}</div>
       <div class="course-card-desc">${esc(course.description)}</div>
       <div class="course-card-meta">${CAT_EMOJI[course.category]||'📚'} ${esc(course.category)} ${course.totalPages ? `· ${course.totalPages} slides` : ''}</div>
+      ${course.createdBy ? `<div class="course-card-publisher">by ${esc(allUsers.find(user => user.id === course.createdBy)?.name || 'Unknown')}</div>` : ''}
       <div class="course-card-actions">
         <a href="#/course/${course.id}" class="btn btn-accent btn-sm">▶ Preview</a>
         <button class="btn btn-outline btn-sm" onclick="showAssignModal('${course.id}')">👥 Assign</button>

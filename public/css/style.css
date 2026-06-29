@@ -348,6 +348,7 @@ img { max-width: 100%; }
 .course-card-desc { font-size: .82rem; color: var(--text-muted); line-height: 1.5; flex: 1;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .course-card-meta { font-size: .78rem; color: var(--text-light); }
+.course-card-publisher { font-size: .72rem; color: var(--text-muted); font-style: italic; margin-top: .1rem; }
 .progress-bar-wrap { background: var(--bg-alt); border-radius: 99px; height: 5px; overflow: hidden; }
 .progress-bar { height: 100%; border-radius: 99px; background: var(--accent); transition: width .6s cubic-bezier(.4,0,.2,1); }
 .course-card-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .25rem; }
@@ -417,6 +418,10 @@ img { max-width: 100%; }
 .member-role { font-size: .78rem; color: var(--text-muted); }
 .member-stats { display: flex; gap: 1rem; font-size: .8rem; color: var(--text-muted); margin-bottom: .6rem; }
 .member-stats strong { color: var(--text); font-weight: 700; }
+.member-stat-row { display: flex; gap: .5rem; margin-bottom: .6rem; }
+.member-stat-box { flex: 1; background: #f9fbf9; border: 1px solid var(--border); border-radius: 8px; padding: .45rem .4rem; text-align: center; }
+.member-stat-box strong { display: block; font-size: .95rem; font-weight: 800; color: var(--primary); line-height: 1.2; }
+.member-stat-box span { font-size: .66rem; color: var(--text-muted); white-space: nowrap; }
 
 /* ─── Leaderboard ─────────────────────────────────────────────────────────── */
 .leaderboard-list { display: flex; flex-direction: column; gap: .65rem; }
@@ -1020,6 +1025,105 @@ img { max-width: 100%; }
 /* ─── Divider ─────────────────────────────────────────────────────────────── */
 .divider { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
 
+/* ─── Changelog ──────────────────────────────────────────────────────────── */
+.changelog-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.changelog-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: rgba(255,255,255,.8);
+  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  transition: background var(--transition);
+}
+.changelog-btn:hover { background: rgba(255,255,255,.12); }
+.changelog-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: -8px;
+  width: 340px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 999;
+  overflow: hidden;
+  animation: fadeUp .18s ease;
+}
+.changelog-list {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: .5rem 0;
+}
+.changelog-entry {
+  padding: .85rem 1rem .75rem;
+  border-bottom: 1px solid var(--border);
+}
+.changelog-entry:last-child { border-bottom: none; }
+.changelog-entry-header {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: .5rem;
+  flex-wrap: wrap;
+}
+.changelog-version {
+  font-size: .72rem;
+  font-weight: 800;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 99px;
+  padding: .15rem .55rem;
+  flex-shrink: 0;
+}
+.changelog-label {
+  font-size: .82rem;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+}
+.changelog-date {
+  font-size: .72rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.changelog-bullets {
+  margin: 0;
+  padding-left: 1.1rem;
+  list-style: disc;
+}
+.changelog-bullets li {
+  font-size: .8rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: .15rem;
+}
+.changelog-bullets li:last-child { margin-bottom: 0; }
+
+/* ─── Export CSV Modal ────────────────────────────────────────────────────── */
+.export-course-option {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .6rem .85rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background var(--transition);
+}
+.export-course-option:last-child { border-bottom: none; }
+.export-course-option:hover { background: #f4faf4; }
+.export-course-option input[type="checkbox"] { width: 16px; height: 16px; flex-shrink: 0; accent-color: var(--primary); cursor: pointer; }
+
 /* ─── Notifications Bell ──────────────────────────────────────────────────── */
 .notif-wrap {
   position: relative;
@@ -1575,6 +1679,64 @@ img { max-width: 100%; }
   color: var(--text);
   line-height: 1.2;
 }
+/* ─── Team Podium ─────────────────────────────────────────────────────────── */
+.ld-podium {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: .5rem;
+  padding: .75rem .5rem 0;
+}
+.ld-podium-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .25rem;
+  flex: 1;
+  max-width: 96px;
+}
+.ld-podium-name {
+  font-size: .73rem;
+  font-weight: 700;
+  color: var(--text);
+  text-align: center;
+  max-width: 86px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ld-podium-xp { font-size: .66rem; color: var(--text-muted); font-weight: 600; }
+.ld-podium-block {
+  width: 100%;
+  background: var(--primary);
+  border-radius: 8px 8px 0 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: .45rem;
+}
+.ld-podium-col--me .ld-podium-block { background: var(--accent-dark, #2e7d32); }
+.ld-podium-medal { font-size: 1.2rem; }
+.ld-podium-rest {
+  border-top: 1px solid var(--border);
+  padding: .4rem .25rem;
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  margin-top: .25rem;
+}
+.ld-podium-rest-row {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  padding: .25rem .4rem;
+  border-radius: 7px;
+}
+.ld-podium-rest-row--me { background: #e8f5e9; }
+.ld-podium-rest-rank { font-size: .72rem; font-weight: 700; color: var(--text-muted); min-width: 22px; }
+.ld-podium-rest-name { font-size: .8rem; flex: 1; color: var(--text); }
+.ld-podium-rest-xp { font-size: .72rem; color: var(--text-muted); font-weight: 600; white-space: nowrap; }
+
 .ld-team-standings { display: flex; flex-direction: column; gap: .18rem; }
 .ld-team-row {
   display: flex;
