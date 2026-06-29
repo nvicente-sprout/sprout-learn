@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sprout Learn — Product Update</title>
+<meta name="description" content="Executive summary of recent Sprout Learn LMS improvements — June 2026.">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --green-deep:   #1C3A1C;
+    --green-mid:    #3D7A3D;
+    --green-chip:   #D6EBD6;
+    --green-chip-text: #245224;
+    --bg:           #F2F6F2;
+    --card:         #FFFFFF;
+    --border:       #D8E8D8;
+    --text:         #2B382B;
+    --muted:        #6B896B;
+    --fix-chip:     #E8F0FF;
+    --fix-text:     #2A4A8A;
+  }
+
+  html { font-size: 16px; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    line-height: 1.6;
+    padding: 0 1rem 4rem;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .doc-header {
+    background: var(--green-deep);
+    color: #fff;
+    padding: 2.5rem 2.5rem 2rem;
+    max-width: 680px;
+    margin: 0 auto;
+    border-radius: 0 0 12px 12px;
+  }
+
+  .doc-header .eyebrow {
+    font-size: .72rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    opacity: .6;
+    margin-bottom: .6rem;
+  }
+
+  .doc-header h1 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 1.85rem;
+    font-weight: normal;
+    line-height: 1.2;
+    text-wrap: balance;
+    margin-bottom: .75rem;
+  }
+
+  .doc-header h1 strong { font-weight: bold; }
+
+  .doc-header .meta {
+    font-size: .8rem;
+    opacity: .65;
+    display: flex;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+  }
+
+  .doc-body {
+    max-width: 680px;
+    margin: 0 auto;
+  }
+
+  .intro {
+    padding: 1.75rem 0 .25rem;
+    font-size: .95rem;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1.75rem;
+    line-height: 1.7;
+  }
+
+  .section-label {
+    font-size: .68rem;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: .85rem;
+    font-weight: 600;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem 1.4rem;
+    margin-bottom: .75rem;
+    display: grid;
+    grid-template-columns: 2rem 1fr;
+    gap: .25rem 1rem;
+    align-items: start;
+  }
+
+  .card-icon {
+    font-size: 1.25rem;
+    line-height: 1.6;
+    text-align: center;
+  }
+
+  .card-title {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 1rem;
+    font-weight: bold;
+    color: var(--text);
+    margin-bottom: .2rem;
+  }
+
+  .card-desc {
+    font-size: .875rem;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+
+  .card-chip {
+    display: inline-block;
+    font-size: .65rem;
+    font-weight: 600;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    padding: .18em .55em;
+    border-radius: 4px;
+    margin-bottom: .35rem;
+  }
+
+  .chip-new { background: var(--green-chip); color: var(--green-chip-text); }
+  .chip-fix { background: var(--fix-chip); color: var(--fix-text); }
+
+  .section-group { margin-bottom: 2.25rem; }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: .75rem;
+    margin: 1.5rem 0 2rem;
+  }
+
+  .stat-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.1rem 1rem;
+    text-align: center;
+  }
+
+  .stat-box strong {
+    display: block;
+    font-family: Georgia, serif;
+    font-size: 1.8rem;
+    color: var(--green-mid);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    margin-bottom: .3rem;
+  }
+
+  .stat-box span {
+    font-size: .75rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    font-weight: 600;
+  }
+
+  .doc-footer {
+    max-width: 680px;
+    margin: 0 auto;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    font-size: .78rem;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: .5rem;
+  }
+
+  @media (max-width: 480px) {
+    .doc-header { padding: 1.75rem 1.25rem 1.5rem; }
+    .doc-header h1 { font-size: 1.45rem; }
+    .stats-row { grid-template-columns: 1fr 1fr; }
+    .stat-box:last-child { grid-column: span 2; }
+  }
+</style>
+</head>
+<body>
+
+<div class="doc-header">
+  <div class="eyebrow">Sprout Solutions · Internal Product Update</div>
+  <h1><strong>Sprout Learn</strong> — What's New</h1>
+  <div class="meta">
+    <span>June 2026</span>
+    <span>Version 1.2 → 1.5</span>
+    <span>Prepared for Exec Review</span>
+  </div>
+</div>
+
+<div class="doc-body">
+
+  <p class="intro">
+    This covers improvements shipped to Sprout Learn over the past two months. Changes span the learner experience, admin visibility tools, and platform reliability — all live on production today.
+  </p>
+
+  <div class="stats-row">
+    <div class="stat-box"><strong>9</strong><span>Improvements</span></div>
+    <div class="stat-box"><strong>4</strong><span>Bug Fixes</span></div>
+    <div class="stat-box"><strong>100%</strong><span>Live on Prod</span></div>
+  </div>
+
+  <div class="section-group">
+    <div class="section-label">Learner Experience</div>
+
+    <div class="card">
+      <div class="card-icon">🏆</div>
+      <div class="card-content">
+        <div class="card-chip chip-new">New</div>
+        <div class="card-title">Team Podium Leaderboard</div>
+        <div class="card-desc">The learner dashboard now shows a podium-style leaderboard scoped to their own team — 1st, 2nd, 3rd place displayed with medals. Encourages healthy competition within teams rather than across the whole company.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon">📦</div>
+      <div class="card-content">
+        <div class="card-chip chip-fix">Fix</div>
+        <div class="card-title">SCORM Course Rendering</div>
+        <div class="card-desc">Uploaded SCORM packages were displaying raw HTML source code instead of rendering the course content. Fixed — SCORM courses now load and play correctly, with full progress tracking via the SCORM 1.2 bridge.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-group">
+    <div class="section-label">Admin Tools</div>
+
+    <div class="card">
+      <div class="card-icon">🔍</div>
+      <div class="card-content">
+        <div class="card-chip chip-new">New</div>
+        <div class="card-title">Course Filter in Team Progress</div>
+        <div class="card-desc">Admins can now select a specific course in the Team Progress view to see only the members assigned to it, along with their individual completion status and score.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon">📊</div>
+      <div class="card-content">
+        <div class="card-chip chip-new">New</div>
+        <div class="card-title">Richer Member Progress Cards</div>
+        <div class="card-desc">Member cards in Team Progress now show three stats at a glance — Assigned courses, Completed courses, and Average Progress percentage — replacing the single number badge that was there before.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon">📥</div>
+      <div class="card-content">
+        <div class="card-chip chip-new">New</div>
+        <div class="card-title">Per-Course CSV Export</div>
+        <div class="card-desc">The Reports page now supports selective CSV exports. Admins can tick specific courses and download a report with Name, Team, Email, Course, Completion Status, and Score columns — one row per learner per course.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon">👤</div>
+      <div class="card-content">
+        <div class="card-chip chip-new">New</div>
+        <div class="card-title">Role Filter in Settings</div>
+        <div class="card-desc">The Settings member list can now be filtered to show Admins only or Learners only, making it easier to manage access across a growing user base.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon">🏷️</div>
+      <div class="card-content">
+        <div class="card-chip chip-new">New</div>
+        <div class="card-title">Publisher Name on Course Cards</div>
+        <div class="card-desc">Course cards now display the name of who uploaded the course. All newly created courses will show the uploader — historical courses without this data will show nothing rather than a placeholder.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-group">
+    <div class="section-label">Platform &amp; Reliability</div>
+
+    <div class="card">
+      <div class="card-icon">✨</div>
+      <div class="card-content">
+        <div class="card-chip chip-new">New</div>
+        <div class="card-title">Changelog Panel</div>
+        <div class="card-desc">A "What's New" panel is now accessible from the header (✨ icon) so any user can see a summary of recent updates without needing to ask — keeps the team informed without an email chain.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon">🔧</div>
+      <div class="card-content">
+        <div class="card-chip chip-fix">Fix</div>
+        <div class="card-title">Category Filter Restored</div>
+        <div class="card-desc">The course category filter was silently broken in both the Admin and Learner course views — clicking a category showed all courses regardless. Root cause identified and fixed.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon">⚙️</div>
+      <div class="card-content">
+        <div class="card-chip chip-fix">Fix</div>
+        <div class="card-title">Deployment Pipeline Restored</div>
+        <div class="card-desc">A configuration issue was preventing Vercel from building the serverless API functions (AI question generation). Resolved — all backend functions are deploying correctly again.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="doc-footer">
+    <span>Sprout Learn · Internal</span>
+    <span>June 2026 · sprout.ph</span>
+  </div>
+
+</div>
+</body>
+</html>
