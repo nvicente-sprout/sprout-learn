@@ -137,6 +137,7 @@ function renderAdminTeam(filterTeam = '', filterCourse = '', searchQ = '', sortB
     user.name.toLowerCase().includes(searchQ.toLowerCase()) ||
     user.email.toLowerCase().includes(searchQ.toLowerCase()));
   if (filterTeam) members = members.filter(user => user.teamId === filterTeam);
+  if (filterCourse) members = members.filter(user => getUserAssignments(user.id).includes(filterCourse));
   members = [...members].sort((itemA, itemB) => {
     if (sortBy === 'progress')    return userAvgProgress(itemB.id) - userAvgProgress(itemA.id);
     if (sortBy === 'completions') return userCompletions(itemB.id) - userCompletions(itemA.id);
