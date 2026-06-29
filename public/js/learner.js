@@ -438,6 +438,12 @@ async function renderCourseViewer(courseId) {
     document.addEventListener('keydown', _pdfKeyHandler);
     await initPdfViewer(course);
   }
+  if (course.contentType === 'scorm' && course.scormUrl) {
+    await initFrameViewer('scorm-iframe', course.scormUrl);
+  }
+  if (course.contentType === 'html' && course.htmlUrl) {
+    await initFrameViewer('html-iframe', course.htmlUrl);
+  }
 }
 
 function markScormComplete(courseId) {
@@ -463,9 +469,9 @@ function viewerBodyHTML(course) {
     const embedId = (course.slidesUrl || '').match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1] || '';
     return `<div class="viewer-youtube"><iframe src="https://docs.google.com/presentation/d/${esc(embedId)}/embed?start=false&loop=false&delayms=3000" allowfullscreen></iframe></div>`;
   } else if (course.contentType === 'scorm') {
-    return `<div class="viewer-youtube"><iframe id="scorm-iframe" src="${esc(course.scormUrl)}" allowfullscreen allow="fullscreen; autoplay" style="width:100%;height:100%;border:none"></iframe></div>`;
+    return `<div class="viewer-youtube"><iframe id="scorm-iframe" src="about:blank" allowfullscreen allow="fullscreen; autoplay" style="width:100%;height:100%;border:none"></iframe></div>`;
   } else if (course.contentType === 'html') {
-    return `<div class="viewer-youtube"><iframe src="${esc(course.htmlUrl)}" allowfullscreen style="width:100%;height:100%;border:none"></iframe></div>`;
+    return `<div class="viewer-youtube"><iframe id="html-iframe" src="about:blank" allowfullscreen style="width:100%;height:100%;border:none"></iframe></div>`;
   } else {
     return `<div class="viewer-no-content">
       <span class="big-icon">📚</span>
@@ -482,6 +488,24 @@ async function initPdfViewer(course) {
     await renderPdfPage(viewerPage);
   } catch {
     document.getElementById('viewer-body').innerHTML = `<div class="viewer-no-content"><span class="big-icon">⚠️</span><h2>Could not load PDF</h2></div>`;
+  }
+}
+
+async function initFrameViewer(iframeId, contentUrl) {
+  const iframe = document.getElementById(iframeId);
+  if (!iframe || !contentUrl) return;
+  try {
+    const response = await fetch(contentUrl);
+    let html = await response.text();
+    // Inject <base href> so relative assets (JS, CSS, images) resolve against the storage path
+    const baseHref = contentUrl.substring(0, contentUrl.lastIndexOf('/') + 1);
+    const baseTag = `<base href="${baseHref}">`;
+    html = html.includes('<head>') ? html.replace('<head>', '<head>' + baseTag) : baseTag + html;
+    const blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+    iframe.src = blobUrl;
+  } catch (err) {
+    console.error('Frame load error:', err);
+    toast('Could not load content: ' + err.message, 'error');
   }
 }
 
