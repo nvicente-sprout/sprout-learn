@@ -5,5 +5,5 @@ function required(name) {
 }
 
 export const config = {
-  geminiApiKey: required('GEMINI_API_KEY'),
+  get geminiApiKey() { return required('GEMINI_API_KEY'); },
 };

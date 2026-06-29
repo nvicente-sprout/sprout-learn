@@ -18,6 +18,7 @@ function courseToRow(course) {
     total_pages: course.totalPages || 0, pdf_url: course.pdfDataUrl || null,
     cover_url: course.coverUrl || null, youtube_id: course.youtubeId || null,
     slides_url: course.slidesUrl || null, scorm_url: course.scormUrl || course.htmlUrl || null,
+    created_by: course.createdBy || null,
   };
 }
 

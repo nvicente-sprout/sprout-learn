@@ -292,6 +292,7 @@ function createCourse() {
     contentType: ytId ? 'youtube' : 'none',
     youtubeId: ytId || null,
     totalPages: 0,
+    createdBy: currentUser?.id || null,
   };
   courses.unshift(newCourse);
   sb.from('courses').upsert(courseToRow(newCourse))
@@ -420,6 +421,7 @@ async function submitUrlCourse() {
     youtubeId: detected.type === 'youtube' ? detected.id : null,
     slidesUrl: detected.type === 'slides' ? urlVal : null,
     totalPages: 0,
+    createdBy: currentUser?.id || null,
   };
   courses.unshift(newCourse);
   const { error: saveErr } = await sb.from('courses').upsert(courseToRow(newCourse));
@@ -596,6 +598,7 @@ async function submitScormUpload() {
       id: courseId, title, description: desc, category: cat, type,
       contentType: 'scorm', scormUrl: publicUrl, totalPages: 0,
       pdfDataUrl: null, youtubeId: null, slidesUrl: null, coverUrl: null,
+      createdBy: currentUser?.id || null,
     };
     courses.unshift(newCourse);
     const { error: dbError } = await sb.from('courses').upsert(courseToRow(newCourse));
@@ -704,6 +707,7 @@ async function submitHtmlSlides() {
     id: courseId, title, description: desc, category: cat, type,
     contentType: 'html', htmlUrl: publicUrl, totalPages: 0,
     pdfDataUrl: null, youtubeId: null, slidesUrl: null, scormUrl: null, coverUrl: null,
+    createdBy: currentUser?.id || null,
   };
   const { error: dbErr } = await sb.from('courses').upsert(courseToRow(newCourse));
   hideLoader();
@@ -888,6 +892,7 @@ async function submitUpload() {
     id: courseId, title, description: '', category: cat, type,
     contentType: 'pdf', totalPages: uploadedPdfData.numPages,
     pdfDataUrl: pdfUrl, coverUrl: coverStorageUrl,
+    createdBy: currentUser?.id || null,
   };
 
   // Save course to DB
