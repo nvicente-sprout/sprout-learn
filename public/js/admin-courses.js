@@ -114,12 +114,15 @@ function adminCoverHTML(course) {
 
 function adminCourseCard(course) {
   const qs = questions[course.id];
+  const hasLesson = !!lessons[course.id];
+  const isPdf = course.contentType === 'pdf' && course.pdfDataUrl;
   return `<div class="course-card" style="animation-delay:${courses.indexOf(course)*0.04}s">
     ${adminCoverHTML(course)}
     <div class="course-card-body">
       <div class="course-card-badges">
         ${contentBadge(course.contentType)}
         ${qs ? `<span class="badge badge-q">${qs.length} Q</span>` : ''}
+        ${hasLesson ? `<span class="badge badge-lesson">🪄 Lesson</span>` : ''}
       </div>
       <div class="course-card-title">${esc(course.title)}</div>
       <div class="course-card-desc">${esc(course.description)}</div>
@@ -129,16 +132,43 @@ function adminCourseCard(course) {
         <a href="#/course/${course.id}" class="btn btn-accent btn-sm">▶ Preview</a>
         <button class="btn btn-outline btn-sm" onclick="showAssignModal('${course.id}')">👥 Assign</button>
         <button class="btn btn-outline btn-sm" onclick="${qs ? `showManualBuilderModal('${course.id}')` : `showAddQuestionsModal('${course.id}')`}">${qs ? '✏️ Edit Questions' : '+ Questions'}</button>
+        ${isPdf ? `<button class="btn btn-outline btn-sm" onclick="generateLessonForExisting('${course.id}')">${hasLesson ? '🪄 Regenerate Lesson' : '🪄 Generate Lesson'}</button>` : ''}
         <button class="btn btn-danger btn-sm" onclick="deleteCourse('${course.id}')">🗑</button>
       </div>
     </div>
   </div>`;
 }
 
+async function generateLessonForExisting(courseId) {
+  const course = getCourse(courseId);
+  if (!course?.pdfDataUrl) { toast('No PDF attached', 'error'); return; }
+  showLoader('Generating interactive lesson', 'AI is reading your PDF');
+  try {
+    const arrayBuffer = await (await fetch(course.pdfDataUrl)).arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let text = '';
+    for (let pageNum = 1; pageNum <= Math.min(pdf.numPages, 30); pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const content = await page.getTextContent();
+      text += content.items.map(item => item.str).join(' ') + '\n';
+    }
+    const lesson = await generateLessonAI(text, course.title);
+    await saveLesson(courseId, lesson);
+    hideLoader();
+    toast(`🪄 Interactive lesson generated! ${lesson.cards.length} cards.`);
+    renderAdminCourses();
+  } catch(err) {
+    console.error('Lesson generation error:', err);
+    hideLoader();
+    toast(`Lesson generation failed: ${err.message || 'check console'}`, 'error');
+  }
+}
+
 async function deleteCourse(id) {
   if (!confirm('Delete this course?')) return;
   courses = courses.filter(course => course.id !== id);
   delete questions[id];
+  delete lessons[id];
   Object.keys(assignments).forEach(uid => {
     assignments[uid] = assignments[uid].filter(cid => cid !== id);
   });
@@ -753,7 +783,7 @@ function showUploadModal() {
           <input type="radio" name="upload-mode" value="ai" checked onchange="selectUploadMode('ai')" />
           <div style="flex:1">
             <div class="upload-option-title">🤖 AI Generate</div>
-            <div class="upload-option-desc">Gemini reads the PDF and auto-generates 12 questions</div>
+            <div class="upload-option-desc">Gemini reads the PDF and auto-generates 8 questions</div>
           </div>
         </label>
         <label class="upload-option" id="opt-manual">
@@ -763,6 +793,10 @@ function showUploadModal() {
         <label class="upload-option" id="opt-skip">
           <input type="radio" name="upload-mode" value="skip" onchange="selectUploadMode('skip')" />
           <div><div class="upload-option-title">⏭ Skip for now</div><div class="upload-option-desc">Upload slides only, add questions later</div></div>
+        </label>
+        <label class="upload-option-checkbox">
+          <input type="checkbox" id="opt-lesson-checkbox" checked />
+          <div><div class="upload-option-title">🪄 Also generate interactive lesson</div><div class="upload-option-desc">Turns the PDF text into a click-through lesson with recall/check cards, in addition to the slide viewer</div></div>
         </label>
       </div>
       <div class="gmodal-footer">
@@ -900,10 +934,13 @@ async function submitUpload() {
   if (dbErr) console.error('Course DB save:', dbErr);
   courses.unshift(newCourse);
 
+  const wantsLesson = document.getElementById('opt-lesson-checkbox')?.checked ?? false;
+  const extractedText = uploadedPdfData.extractedText;
+
   if (mode === 'ai') {
     showLoader('Generating questions', 'AI is reading your PDF');
     try {
-      const qs = await generateQuestionsAI(uploadedPdfData.extractedText, title);
+      const qs = await generateQuestionsAI(extractedText, title);
       questions[courseId] = qs;
       await sb.from('questions').upsert({ course_id: courseId, questions_json: qs });
       hideLoader();
@@ -913,17 +950,30 @@ async function submitUpload() {
       hideLoader();
       toast(`AI failed: ${err.message || 'unknown error'} — course uploaded without questions.`, 'info');
     }
-    renderAdminCourses();
   } else if (mode === 'manual') {
     hideLoader();
     toast('Course uploaded! Opening question builder…');
-    renderAdminCourses();
     requestAnimationFrame(() => requestAnimationFrame(() => showManualBuilderModal(courseId)));
   } else {
     hideLoader();
     toast('Course uploaded!');
-    renderAdminCourses();
   }
+
+  if (wantsLesson) {
+    showLoader('Generating interactive lesson', 'AI is building your lesson cards');
+    try {
+      const lesson = await generateLessonAI(extractedText, title);
+      await saveLesson(courseId, lesson);
+      hideLoader();
+      toast(`🪄 Interactive lesson generated! ${lesson.cards.length} cards.`);
+    } catch(err) {
+      console.error('Lesson generation error:', err);
+      hideLoader();
+      toast(`Lesson generation failed: ${err.message || 'unknown error'} — course uploaded without a lesson.`, 'info');
+    }
+  }
+
+  renderAdminCourses();
   uploadedPdfData = null;
 }
 
@@ -970,6 +1020,69 @@ function repairJsonArray(str) {
     try { return JSON.parse(str.slice(0, lastClose + 1) + ']'); } catch {}
   }
   throw new Error('Could not parse or repair Gemini JSON response');
+}
+
+// ─── AI Lesson Generation (Interactive Lessons) ──────────────────────────────
+async function generateLessonAI(text, courseTitle) {
+  const res = await fetch('/api/generate-lesson', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, courseTitle }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Server error ${res.status}`);
+  }
+  const data = await res.json();
+  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const cleaned = raw
+    .replace(/```json/gi, '').replace(/```/g, '')
+    .replace(/^[^{]*/,'').trim();
+  const match = cleaned.match(/\{[\s\S]*/);
+  if (!match) throw new Error(`No JSON object in response. Got: "${raw.slice(0,120)}"`);
+  const lesson = repairLessonJson(match[0]);
+  validateLesson(lesson);
+  return lesson;
+}
+
+// Same brace-walking repair strategy as repairJsonArray, adapted for the
+// {"cards":[...]} object shape instead of a bare top-level array.
+function repairLessonJson(str) {
+  try { return JSON.parse(str); } catch {}
+  const cardsStart = str.indexOf('"cards"');
+  if (cardsStart === -1) throw new Error('Could not find "cards" in Gemini lesson response');
+  const arrayStart = str.indexOf('[', cardsStart);
+  if (arrayStart === -1) throw new Error('Could not find cards array in Gemini lesson response');
+
+  let depth = 0, inString = false, escape = false, lastClose = -1;
+  for (let charIndex = arrayStart; charIndex < str.length; charIndex++) {
+    const char = str[charIndex];
+    if (escape)               { escape = false; continue; }
+    if (char === '\\' && inString) { escape = true; continue; }
+    if (char === '"')         { inString = !inString; continue; }
+    if (inString)             continue;
+    if (char === '{')         depth++;
+    if (char === '}')         { depth--; if (depth === 0) lastClose = charIndex; }
+  }
+  if (lastClose === -1) throw new Error('Could not parse or repair Gemini lesson JSON response');
+  try { return JSON.parse(str.slice(0, lastClose + 1) + ']}'); } catch {}
+  throw new Error('Could not parse or repair Gemini lesson JSON response');
+}
+
+function validateLesson(lesson) {
+  if (!lesson || !Array.isArray(lesson.cards) || !lesson.cards.length) {
+    throw new Error('Generated lesson has no cards');
+  }
+  const validTypes = ['learn','recall','check','scenario','recap'];
+  lesson.cards.forEach((card, cardIndex) => {
+    if (!validTypes.includes(card.type)) throw new Error(`Card ${cardIndex + 1} has invalid type "${card.type}"`);
+  });
+}
+
+async function saveLesson(courseId, lesson) {
+  lessons[courseId] = lesson;
+  const { error } = await sb.from('lessons').upsert({ course_id: courseId, lesson_json: lesson });
+  if (error) console.error('Lesson save:', error);
 }
 
 const FALLBACK_QUESTIONS = [

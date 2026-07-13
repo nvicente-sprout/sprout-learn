@@ -118,7 +118,7 @@ function formatDate(date = new Date()) {
 function getCourse(id)   { return courses.find(course => course.id === id); }
 function getUser(id)     { return allUsers.find(user => user.id === id); }
 function getProgress(userId, courseId) {
-  return progress[`${userId}_${courseId}`] || { currentSlide: 0, completed: false, score: null, passed: false };
+  return progress[`${userId}_${courseId}`] || { currentSlide: 0, lessonCard: 0, completed: false, score: null, passed: false };
 }
 function setProgress(userId, courseId, update) {
   const key = `${userId}_${courseId}`;
@@ -134,6 +134,16 @@ function setProgress(userId, courseId, update) {
       toast('⚠️ Progress failed to save: ' + error.message, 'error');
     }
   });
+}
+
+// Lesson-card position is written through its own upsert (not folded into setProgress's
+// payload) so that a missing `lesson_card` column can only break lesson-position resume —
+// never the current_slide/completed/score/passed fields every other content type depends on.
+function setLessonCard(userId, courseId, cardIndex) {
+  const key = `${userId}_${courseId}`;
+  progress[key] = { ...getProgress(userId, courseId), lessonCard: cardIndex };
+  sb.from('progress').upsert({ user_id: userId, course_id: courseId, lesson_card: cardIndex })
+    .then(({ error }) => { if (error) console.error('Lesson card progress save:', error); });
 }
 function getUserAssignments(userId) { return assignments[userId] || []; }
 function isAssigned(userId, courseId) { return getUserAssignments(userId).includes(courseId); }

@@ -382,32 +382,55 @@ async function saveLearnerSettings() {
 }
 
 // ─── Course Viewer ────────────────────────────────────────────────────────────
+function hasLesson(course) {
+  return course?.contentType === 'pdf' && !!lessons[course.id];
+}
+
 async function renderCourseViewer(courseId) {
-  viewerCourseId = courseId;
   const course = getCourse(courseId);
   if (!course) { navigate(currentUser.isAdmin ? '/admin/courses' : '/learner/library'); return; }
 
+  // Only reset to the default mode when landing on a different course —
+  // toggleViewerMode() re-renders this same course and must not be clobbered back to lesson mode.
+  if (viewerCourseId !== courseId) {
+    viewerMode = hasLesson(course) ? 'lesson' : 'slides';
+  }
+  viewerCourseId = courseId;
+
   const uid = currentUser.id;
   const p   = getProgress(uid, courseId);
-  viewerPage = Math.max(1, p.currentSlide || 1);
+
+  if (viewerMode === 'lesson') {
+    lessonCardIndex = Math.min(Math.max(0, p.lessonCard || 0), lessons[courseId].cards.length - 1);
+  } else {
+    viewerPage = Math.max(1, p.currentSlide || 1);
+  }
+
+  const showModeToggle = hasLesson(course);
 
   document.getElementById('app').innerHTML = `
     <div class="viewer-page" id="viewer-page">
       <div class="viewer-topbar">
         <button class="viewer-back" onclick="leaveViewer()">← Back</button>
         <div class="viewer-title">${esc(course.title)}</div>
-        ${course.totalPages ? `
+        ${viewerMode === 'lesson' ? `
+          <div class="viewer-progress-wrap">
+            <div class="viewer-progress-bar" id="viewer-prog-bar" style="width:${Math.round(((lessonCardIndex+1)/lessons[courseId].cards.length)*100)}%"></div>
+          </div>
+          <span class="viewer-progress-label" id="viewer-prog-label">${lessonCardIndex+1}/${lessons[courseId].cards.length}</span>
+        ` : course.totalPages ? `
           <div class="viewer-progress-wrap">
             <div class="viewer-progress-bar" id="viewer-prog-bar" style="width:${Math.round((viewerPage/course.totalPages)*100)}%"></div>
           </div>
           <span class="viewer-progress-label" id="viewer-prog-label">${viewerPage}/${course.totalPages}</span>
         ` : ''}
-        ${questions[courseId] ? `<button class="viewer-btn accent" onclick="navigate('/assessment/${courseId}')" style="margin-left:.5rem">📝 Assessment</button>` : ''}
+        ${showModeToggle ? `<button class="viewer-btn" onclick="toggleViewerMode()" style="margin-left:.5rem">${viewerMode === 'lesson' ? '📄 View Slides' : '🪄 Back to Lesson'}</button>` : ''}
+        ${questions[courseId] && viewerMode !== 'lesson' ? `<button class="viewer-btn accent" onclick="navigate('/assessment/${courseId}')" style="margin-left:.5rem">📝 Assessment</button>` : ''}
       </div>
       <div class="viewer-body" id="viewer-body">
         ${viewerBodyHTML(course)}
       </div>
-      ${course.contentType === 'pdf' ? `
+      ${viewerMode === 'lesson' ? '' : course.contentType === 'pdf' ? `
         <div class="viewer-bottombar" id="viewer-bottombar">
           <button class="viewer-btn" id="viewer-prev" onclick="pdfPrevPage()" ${viewerPage<=1?'disabled':''}>← Prev</button>
           <div class="viewer-dots" id="viewer-dots"></div>
@@ -429,13 +452,23 @@ async function renderCourseViewer(courseId) {
         </div>`}
     </div>`;
 
+  // Attach arrow key navigation (works for both the PDF slide viewer and the lesson card viewer)
+  _pdfKeyHandler = (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      viewerMode === 'lesson' ? lessonNext() : pdfNextPage();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      viewerMode === 'lesson' ? lessonPrev() : pdfPrevPage();
+    }
+  };
+  document.addEventListener('keydown', _pdfKeyHandler);
+
+  if (viewerMode === 'lesson') {
+    renderLessonCard();
+    return;
+  }
   if (course.contentType === 'pdf' && course.pdfDataUrl) {
-    // Attach arrow key navigation
-    _pdfKeyHandler = (e) => {
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); pdfNextPage(); }
-      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); pdfPrevPage(); }
-    };
-    document.addEventListener('keydown', _pdfKeyHandler);
     await initPdfViewer(course);
   }
   if (course.contentType === 'scorm' && course.scormUrl) {
@@ -444,6 +477,11 @@ async function renderCourseViewer(courseId) {
   if (course.contentType === 'html' && course.htmlUrl) {
     await initFrameViewer('html-iframe', course.htmlUrl);
   }
+}
+
+function toggleViewerMode() {
+  viewerMode = viewerMode === 'lesson' ? 'slides' : 'lesson';
+  renderCourseViewer(viewerCourseId);
 }
 
 function markScormComplete(courseId) {
@@ -461,6 +499,9 @@ function markHtmlComplete(courseId) {
 }
 
 function viewerBodyHTML(course) {
+  if (viewerMode === 'lesson') {
+    return `<div class="lesson-wrap" id="lesson-wrap"></div>`;
+  }
   if (course.contentType === 'pdf') {
     return `<canvas id="pdf-canvas"></canvas>`;
   } else if (course.contentType === 'youtube') {
@@ -595,6 +636,135 @@ function setViewerProgress(uid, courseId, update) {
 function leaveViewer() {
   if (_pdfKeyHandler) { document.removeEventListener('keydown', _pdfKeyHandler); _pdfKeyHandler = null; }
   navigate(currentUser.isAdmin ? '/admin/courses' : '/learner/my-learning');
+}
+
+// ─── Interactive Lesson Viewer ─────────────────────────────────────────────────
+// Per-card interaction state for the current viewer session only (mirrors assessmentAnswers).
+let _lessonCardState = {};
+
+function renderLessonCard() {
+  const lesson = lessons[viewerCourseId];
+  const wrap = document.getElementById('lesson-wrap');
+  if (!lesson || !wrap) return;
+  const card = lesson.cards[lessonCardIndex];
+  const state = _lessonCardState[lessonCardIndex] || (_lessonCardState[lessonCardIndex] = {});
+
+  const pct = Math.round(((lessonCardIndex+1) / lesson.cards.length) * 100);
+  const progBar = document.getElementById('viewer-prog-bar');
+  if (progBar) progBar.style.width = pct + '%';
+  const progLabel = document.getElementById('viewer-prog-label');
+  if (progLabel) progLabel.textContent = `${lessonCardIndex+1}/${lesson.cards.length}`;
+
+  wrap.innerHTML = `
+    <div class="lesson-card-body">
+      ${lessonCardBodyHTML(card, state)}
+    </div>
+    <div class="viewer-bottombar" id="lesson-bottombar">
+      <button class="viewer-btn" onclick="lessonPrev()" ${lessonCardIndex<=0?'disabled':''}>← Back</button>
+      <div class="viewer-dots" id="lesson-dots">
+        ${lesson.cards.length <= 30 ? lesson.cards.map((_, cardIndex) =>
+          `<button class="viewer-dot ${cardIndex===lessonCardIndex?'active':''}" onclick="lessonGoTo(${cardIndex})"></button>`).join('') : ''}
+      </div>
+      <span class="viewer-slide-counter">Card ${lessonCardIndex+1} of ${lesson.cards.length}</span>
+      ${card.type === 'recap'
+        ? `<button class="viewer-btn accent" onclick="completeLesson('${viewerCourseId}')">✓ Complete</button>`
+        : `<button class="viewer-btn accent" id="lesson-next-btn" onclick="lessonNext()" ${lessonCardNeedsAnswer(card) && state.selected===undefined?'disabled':''}>Next →</button>`}
+    </div>`;
+}
+
+function lessonCardNeedsAnswer(card) {
+  return card.type === 'check' || card.type === 'scenario';
+}
+
+function lessonCardBodyHTML(card, state) {
+  if (card.type === 'learn') {
+    return `
+      <div class="lesson-kicker">📖 Learn</div>
+      <h2 class="lesson-heading">${esc(card.heading || '')}</h2>
+      <p class="lesson-body-text">${esc(card.body || '')}</p>
+      ${card.highlight ? `<div class="lesson-highlight">💡 ${esc(card.highlight)}</div>` : ''}`;
+  }
+  if (card.type === 'recall') {
+    return `
+      <div class="lesson-kicker">🧠 Quick Recall</div>
+      <p class="lesson-body-text">${esc(card.prompt || '')}</p>
+      ${state.revealed
+        ? `<div class="lesson-highlight">${esc(card.answer || '')}</div>`
+        : `<button class="btn btn-outline" onclick="revealLessonAnswer()">Reveal Answer</button>`}`;
+  }
+  if (card.type === 'check' || card.type === 'scenario') {
+    const kicker = card.type === 'scenario' ? '🎭 Scenario' : '✅ Check Your Understanding';
+    const answered = state.selected !== undefined;
+    return `
+      <div class="lesson-kicker">${kicker}</div>
+      <p class="lesson-body-text">${esc(card.prompt || '')}</p>
+      <div class="assess-options">
+        ${(card.options || []).map((opt, optionIndex) => {
+          const isCorrect = optionIndex === card.correct;
+          const isSelected = state.selected === optionIndex;
+          let cls = 'assess-opt';
+          if (answered && isSelected) cls += isCorrect ? ' assess-opt--selected lesson-opt--correct' : ' assess-opt--selected lesson-opt--wrong';
+          else if (answered && isCorrect) cls += ' lesson-opt--correct';
+          return `<button class="${cls}" ${answered?'disabled':''} onclick="selectLessonOption(${optionIndex})">
+            <span class="assess-opt-letter">${String.fromCharCode(65+optionIndex)}</span>
+            <span class="assess-opt-text">${esc(opt)}</span>
+          </button>`;
+        }).join('')}
+      </div>
+      ${answered ? `<div class="lesson-why">${state.selected===card.correct ? '✅ Correct — ' : '❌ Not quite — '}${esc(card.why || '')}</div>` : ''}`;
+  }
+  if (card.type === 'recap') {
+    return `
+      <div class="lesson-kicker">🎯 Recap</div>
+      <ul class="lesson-recap-list">
+        ${(card.points || []).map(point => `<li>${esc(point)}</li>`).join('')}
+      </ul>`;
+  }
+  return '';
+}
+
+function revealLessonAnswer() {
+  (_lessonCardState[lessonCardIndex] || (_lessonCardState[lessonCardIndex] = {})).revealed = true;
+  renderLessonCard();
+}
+
+function selectLessonOption(optionIndex) {
+  const state = _lessonCardState[lessonCardIndex] || (_lessonCardState[lessonCardIndex] = {});
+  if (state.selected !== undefined) return; // already locked
+  state.selected = optionIndex;
+  renderLessonCard();
+}
+
+function lessonNext() {
+  const lesson = lessons[viewerCourseId];
+  if (!lesson || lessonCardIndex >= lesson.cards.length - 1) return;
+  lessonCardIndex++;
+  setLessonCard(currentUser.id, viewerCourseId, lessonCardIndex);
+  renderLessonCard();
+}
+
+function lessonPrev() {
+  if (lessonCardIndex <= 0) return;
+  lessonCardIndex--;
+  setLessonCard(currentUser.id, viewerCourseId, lessonCardIndex);
+  renderLessonCard();
+}
+
+function lessonGoTo(cardIndex) {
+  lessonCardIndex = cardIndex;
+  setLessonCard(currentUser.id, viewerCourseId, lessonCardIndex);
+  renderLessonCard();
+}
+
+function completeLesson(courseId) {
+  if (questions[courseId]) {
+    navigate(`/assessment/${courseId}`);
+    return;
+  }
+  setProgress(currentUser.id, courseId, { completed: true });
+  toast('✅ Lesson complete!');
+  const btn = document.querySelector('#lesson-bottombar .viewer-btn.accent');
+  if (btn) { btn.textContent = '✅ Completed'; btn.disabled = true; }
 }
 
 // ─── Assessment ───────────────────────────────────────────────────────────────
