@@ -641,6 +641,10 @@ function leaveViewer() {
 // ─── Interactive Lesson Viewer ─────────────────────────────────────────────────
 // Per-card interaction state for the current viewer session only (mirrors assessmentAnswers).
 let _lessonCardState = {};
+// Cached pdf.js document used for rendering per-card page thumbnails, kept separate from
+// viewerPdfDoc (slides mode) since the two can be active in different lifecycles.
+let _lessonThumbPdfDoc = null;
+let _lessonThumbPdfDocCourseId = null;
 
 function renderLessonCard() {
   const lesson = lessons[viewerCourseId];
@@ -648,6 +652,7 @@ function renderLessonCard() {
   if (!lesson || !wrap) return;
   const card = lesson.cards[lessonCardIndex];
   const state = _lessonCardState[lessonCardIndex] || (_lessonCardState[lessonCardIndex] = {});
+  const course = getCourse(viewerCourseId);
 
   const pct = Math.round(((lessonCardIndex+1) / lesson.cards.length) * 100);
   const progBar = document.getElementById('viewer-prog-bar');
@@ -655,8 +660,11 @@ function renderLessonCard() {
   const progLabel = document.getElementById('viewer-prog-label');
   if (progLabel) progLabel.textContent = `${lessonCardIndex+1}/${lesson.cards.length}`;
 
+  const showThumb = course?.pdfDataUrl && Number.isInteger(card.page) && card.page >= 1 && card.page <= (course.totalPages || Infinity);
+
   wrap.innerHTML = `
     <div class="lesson-card-body">
+      ${showThumb ? `<div class="lesson-thumb" id="lesson-thumb"><div class="lesson-thumb-loading">Loading slide…</div></div>` : ''}
       ${lessonCardBodyHTML(card, state)}
     </div>
     <div class="viewer-bottombar" id="lesson-bottombar">
@@ -670,6 +678,40 @@ function renderLessonCard() {
         ? `<button class="viewer-btn accent" onclick="completeLesson('${viewerCourseId}')">✓ Complete</button>`
         : `<button class="viewer-btn accent" id="lesson-next-btn" onclick="lessonNext()" ${lessonCardNeedsAnswer(card) && state.selected===undefined?'disabled':''}>Next →</button>`}
     </div>`;
+
+  if (showThumb) renderLessonThumb(course, card.page);
+}
+
+// Renders a small thumbnail of the PDF page a lesson card was drawn from, so cards read
+// less like a wall of text and more like an annotated slide. Best-effort: any failure just
+// leaves the "Loading slide…" placeholder's parent empty rather than breaking the card.
+async function renderLessonThumb(course, pageNum) {
+  const requestedCourseId = viewerCourseId;
+  const requestedCardIndex = lessonCardIndex;
+  try {
+    if (!_lessonThumbPdfDoc || _lessonThumbPdfDocCourseId !== course.id) {
+      _lessonThumbPdfDoc = await pdfjsLib.getDocument(course.pdfDataUrl).promise;
+      _lessonThumbPdfDocCourseId = course.id;
+    }
+    // Bail if the learner already navigated elsewhere while the PDF was loading
+    if (viewerCourseId !== requestedCourseId || lessonCardIndex !== requestedCardIndex) return;
+
+    const page = await _lessonThumbPdfDoc.getPage(pageNum);
+    const viewport = page.getViewport({ scale: Math.min(560 / page.getViewport({ scale: 1 }).width, 1.5) });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+    if (viewerCourseId !== requestedCourseId || lessonCardIndex !== requestedCardIndex) return;
+    const slot = document.getElementById('lesson-thumb');
+    if (!slot) return;
+    slot.innerHTML = '';
+    slot.appendChild(canvas);
+  } catch (error) {
+    const slot = document.getElementById('lesson-thumb');
+    if (slot) slot.remove();
+  }
 }
 
 function lessonCardNeedsAnswer(card) {
@@ -678,10 +720,15 @@ function lessonCardNeedsAnswer(card) {
 
 function lessonCardBodyHTML(card, state) {
   if (card.type === 'learn') {
+    // body is normally a short array of bullet points; tolerate a plain string too
+    // in case a model response doesn't follow the schema exactly.
+    const bodyHTML = Array.isArray(card.body)
+      ? `<ul class="lesson-body-list">${card.body.map(point => `<li>${esc(point)}</li>`).join('')}</ul>`
+      : card.body ? `<p class="lesson-body-text">${esc(card.body)}</p>` : '';
     return `
       <div class="lesson-kicker">📖 Learn</div>
       <h2 class="lesson-heading">${esc(card.heading || '')}</h2>
-      <p class="lesson-body-text">${esc(card.body || '')}</p>
+      ${bodyHTML}
       ${card.highlight ? `<div class="lesson-highlight">💡 ${esc(card.highlight)}</div>` : ''}`;
   }
   if (card.type === 'recall') {

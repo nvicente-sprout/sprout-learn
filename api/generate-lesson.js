@@ -28,28 +28,32 @@ export default async function handler(req, res) {
 
   const prompt = `You are an instructional designer turning training content from "${courseTitle || 'this course'}" into a short interactive lesson made of cards.
 
+The source content below is divided into pages, each marked with a line like "[Page 3]" right before that page's text.
+
 Rules:
 - Use ONLY facts present in the source content below. Do not invent rules, numbers, dates, or examples the text doesn't support.
 - Scale the number of cards to the amount of content — do NOT pad. Short content = 4-6 cards, long content = up to about 12 cards. Never use a fixed count.
 - Never place two "learn" cards in a row. Every content bite ("learn") must be followed by a "recall", "check", or "scenario" card so the learner always does something after reading.
+- Keep "learn" card "body" as 2-4 SHORT bullet points (max ~12 words each), not a paragraph. Put the single most important sentence in "highlight" instead of repeating it in "body".
 - Every "check" and "scenario" card must include a one-sentence "why" explaining the correct answer, and 2-4 "options".
 - Include exactly one "recap" card, and it must be the LAST card, with 3-5 bullet "points".
 - If the content is about HR, compliance, or policy, include at least one "scenario" card — a realistic "what would you do" situation.
+- Every card EXCEPT "recap" must include a "page" field: the 1-based page number (from the "[Page N]" markers) that card's content is drawn from. Omit "page" on the "recap" card.
 
 Card types and exact shapes:
-{"type":"learn","heading":"...","body":"...","highlight":"... (optional)"}
-{"type":"recall","prompt":"...","answer":"..."}
-{"type":"check","prompt":"...","options":["...","..."],"correct":0,"why":"..."}
-{"type":"scenario","prompt":"...","options":["...","..."],"correct":0,"why":"..."}
+{"type":"learn","heading":"...","body":["short point","short point"],"highlight":"... (optional)","page":1}
+{"type":"recall","prompt":"...","answer":"...","page":1}
+{"type":"check","prompt":"...","options":["...","..."],"correct":0,"why":"...","page":1}
+{"type":"scenario","prompt":"...","options":["...","..."],"correct":0,"why":"...","page":1}
 {"type":"recap","points":["...","...","..."]}
 
 ("correct" is a 0-based index into "options".)
 
 Return ONLY a raw JSON object. No markdown, no code blocks, no explanation, no extra text before or after. Use this exact format:
-{"cards":[{"type":"learn","heading":"Example heading","body":"Example body text.","highlight":"Example highlight"},{"type":"check","prompt":"Example question?","options":["Option A","Option B"],"correct":0,"why":"Example reason."}]}
+{"cards":[{"type":"learn","heading":"Example heading","body":["Short point one","Short point two"],"highlight":"Example highlight","page":1},{"type":"check","prompt":"Example question?","options":["Option A","Option B"],"correct":0,"why":"Example reason.","page":2}]}
 
 Training content:
-${String(text).slice(0, 4000)}`;
+${String(text).slice(0, 6000)}`;
 
   let lastError = 'All models failed';
   for (const model of modelsToTry) {

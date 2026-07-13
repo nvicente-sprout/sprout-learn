@@ -146,13 +146,14 @@ async function generateLessonForExisting(courseId) {
   try {
     const arrayBuffer = await (await fetch(course.pdfDataUrl)).arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    let text = '';
+    let pageTaggedText = '';
     for (let pageNum = 1; pageNum <= Math.min(pdf.numPages, 30); pageNum++) {
       const page = await pdf.getPage(pageNum);
       const content = await page.getTextContent();
-      text += content.items.map(item => item.str).join(' ') + '\n';
+      const pageText = content.items.map(item => item.str).join(' ');
+      pageTaggedText += `[Page ${pageNum}]\n${pageText}\n\n`;
     }
-    const lesson = await generateLessonAI(text, course.title);
+    const lesson = await generateLessonAI(pageTaggedText, course.title);
     await saveLesson(courseId, lesson);
     hideLoader();
     toast(`🪄 Interactive lesson generated! ${lesson.cards.length} cards.`);
@@ -829,12 +830,16 @@ async function handlePdfSelected(input) {
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
     const numPages = pdf.numPages;
 
-    // Extract text
+    // Extract text (plain, for question generation) and page-tagged text (for lesson generation,
+    // so Gemini can cite which page each card's content came from)
     let text = '';
+    let pageTaggedText = '';
     for (let pageNum = 1; pageNum <= Math.min(numPages, 30); pageNum++) {
       const page = await pdf.getPage(pageNum);
       const content = await page.getTextContent();
-      text += content.items.map(item => item.str).join(' ') + '\n';
+      const pageText = content.items.map(item => item.str).join(' ');
+      text += pageText + '\n';
+      pageTaggedText += `[Page ${pageNum}]\n${pageText}\n\n`;
     }
 
     // Render first page as cover thumbnail
@@ -851,7 +856,7 @@ async function handlePdfSelected(input) {
       coverUrl = canvas.toDataURL('image/jpeg', 0.8);
     } catch(error) { /* cover optional */ }
 
-    uploadedPdfData = { file, dataUrl, numPages, extractedText: text, coverUrl };
+    uploadedPdfData = { file, dataUrl, numPages, extractedText: text, pageTaggedText, coverUrl };
     hideLoader();
 
     const titleEl = document.getElementById('upload-title');
@@ -962,7 +967,7 @@ async function submitUpload() {
   if (wantsLesson) {
     showLoader('Generating interactive lesson', 'AI is building your lesson cards');
     try {
-      const lesson = await generateLessonAI(extractedText, title);
+      const lesson = await generateLessonAI(uploadedPdfData.pageTaggedText, title);
       await saveLesson(courseId, lesson);
       hideLoader();
       toast(`🪄 Interactive lesson generated! ${lesson.cards.length} cards.`);
@@ -1080,9 +1085,12 @@ function validateLesson(lesson) {
 }
 
 async function saveLesson(courseId, lesson) {
-  lessons[courseId] = lesson;
   const { error } = await sb.from('lessons').upsert({ course_id: courseId, lesson_json: lesson });
-  if (error) console.error('Lesson save:', error);
+  if (error) {
+    console.error('Lesson save:', error);
+    throw new Error('Lesson generated but failed to save: ' + error.message);
+  }
+  lessons[courseId] = lesson;
 }
 
 const FALLBACK_QUESTIONS = [
