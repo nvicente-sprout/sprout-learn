@@ -30,8 +30,11 @@ Static SPA (`public/`) + Vercel serverless functions (`api/`).
 
 **API** (`api/`): Vercel serverless ES modules.
 - `api/generate-questions.js` — proxies Gemini API; tries models in preference order, falls back on 429/503
+- `api/generate-lesson.js` — same model-fallback chain, generates an interactive lesson (`{cards:[...]}`) from a course's extracted text for the Interactive Lessons feature
 - `api/fetch-content.js` — fetches YouTube transcripts and Google Slides text server-side
 - `api/config.js` — single env reader; `required()` throws on missing vars (no silent defaults)
+
+**Interactive Lessons**: optional additional path for PDF courses — turns extracted PDF text into a click-through, card-based lesson (learn/recall/check/scenario/recap cards) instead of just the raw slide viewer. Lesson JSON is generated client-side via `generateLessonAI()`/`repairLessonJson()` in `admin-courses.js` (mirrors `generateQuestionsAI()`/`repairJsonArray()`), stored in the `lessons` table (`course_id`, `lesson_json`), and rendered by `renderLessonCard()` in `learner.js`. PDF courses with a saved lesson default to lesson mode in the viewer; the original PDF slide viewer remains available via a "View Slides" toggle.
 
 **Backend**: Supabase (Postgres + Auth + Storage + Realtime). The anon key in `config.js` is intentionally public — RLS enforces access control. Gemini API key is server-side only.
 

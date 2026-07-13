@@ -45,9 +45,12 @@ let adminViewingAsLearner = false;
 let assignments   = {};  // { userId: [courseId, ...] }
 let progress      = {};  // { 'userId_courseId': { currentSlide, completed, score, passed } }
 let questions     = {};  // { courseId: [...] }
+let lessons       = {};  // { courseId: { cards: [...] } }
 let viewerPdfDoc    = null;
 let viewerPage      = 1;
 let viewerCourseId  = null;
+let viewerMode      = 'slides'; // 'slides' | 'lesson' — which body renders for pdf courses
+let lessonCardIndex = 0;
 let _pdfKeyHandler  = null;
 
 // Assessment state
