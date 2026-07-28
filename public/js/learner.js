@@ -68,7 +68,7 @@ function renderLearnerDashboard() {
       <h1>Welcome, ${esc(currentUser.name.split(' ')[0])} 👋</h1>
       <p>${userLevel(uid).icon} ${userLevel(uid).label} &nbsp;·&nbsp; ${userXP(uid)} XP${userNextLevel(uid) ? ` &nbsp;·&nbsp; ${userNextLevel(uid).xpNeeded} XP to ${userNextLevel(uid).label}` : ' &nbsp;·&nbsp; <strong style="color:var(--accent)">Max Level!</strong>'}</p>
     </div>
-    ${userBadges(uid).length ? `<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem">${userBadges(uid).map(badge=>`<span title="${badge.desc}" style="background:#e8f5e9;color:#1B3A1B;padding:.25rem .65rem;border-radius:20px;font-size:.8rem;font-weight:700;cursor:default">${badge.icon} ${badge.label}</span>`).join('')}</div>` : ''}
+    ${userBadges(uid).length ? `<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem">${userBadges(uid).map(badge=>`<span title="${badge.desc}" style="background:#e8f5e9;color:#092903;padding:.25rem .65rem;border-radius:20px;font-size:.8rem;font-weight:700;cursor:default">${badge.icon} ${badge.label}</span>`).join('')}</div>` : ''}
     <div class="ld-top-row">
       <div class="ld-stat-pills">
         <div class="ld-stat-pill"><span>${assigned.length}</span>Assigned</div>
@@ -145,7 +145,7 @@ function renderLearnerDashboard() {
         const course = getCourse(cid); if (!course) return '';
         const cover = course.coverUrl
           ? `<img src="${course.coverUrl}" alt="" />`
-          : `<div style="width:100%;height:100%;background:linear-gradient(135deg,#1B3A1B 0%,#2d6a2d 100%);display:flex;align-items:center;justify-content:center">
+          : `<div style="width:100%;height:100%;background:linear-gradient(135deg,#092903 0%,#2d6a2d 100%);display:flex;align-items:center;justify-content:center">
               <img src="assets/logos/logo-icon-green.svg" style="width:24px;height:24px;opacity:.8" alt="" />
             </div>`;
         return `<div class="completed-card" style="animation-delay:${courseIndex*0.05}s">
@@ -291,7 +291,7 @@ function renderLearnerSettings() {
     <div class="settings-card">
       <p class="section-heading" style="margin-top:0">Profile Photo</p>
       <div style="display:flex;align-items:center;gap:1.25rem;margin-bottom:1.75rem">
-        <div class="learner-avatar-upload" id="lav-wrap" onclick="document.getElementById('lav-input').click()" title="Change photo">
+        <div class="learner-avatar-upload" id="lav-wrap" onclick="document.getElementById('lav-input').click()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();document.getElementById('lav-input').click()}" role="button" tabindex="0" title="Change photo" aria-label="Change profile photo">
           ${currentUser.avatarUrl
             ? `<img src="${currentUser.avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" />`
             : `<span style="font-size:1.6rem;font-weight:700;color:white">${initials(currentUser.name)}</span>`}
@@ -326,10 +326,10 @@ function renderLearnerSettings() {
     <div style="display:flex;flex-wrap:wrap;gap:.75rem">
       ${badges.map(badge => `
         <div style="background:var(--card-bg);border:1.5px solid var(--border);border-radius:var(--radius);padding:.85rem 1.1rem;display:flex;align-items:center;gap:.75rem;min-width:190px;animation:fadeUp .3s ease both">
-          <span style="font-size:1.75rem">${b.icon}</span>
+          <span style="font-size:1.75rem">${badge.icon}</span>
           <div>
-            <div style="font-weight:700;font-size:.88rem">${esc(b.label)}</div>
-            <div style="font-size:.76rem;color:var(--text-muted)">${esc(b.desc)}</div>
+            <div style="font-weight:700;font-size:.88rem">${esc(badge.label)}</div>
+            <div style="font-size:.76rem;color:var(--text-muted)">${esc(badge.desc)}</div>
           </div>
         </div>`).join('')}
     </div>` : ''}
@@ -979,7 +979,7 @@ function showCertificate(courseId) {
   showModal(`
     <div class="modal" onclick="event.stopPropagation()">
       <div class="cert-header" style="position:relative">
-        <button class="modal-close" onclick="closeModal()">✕</button>
+        <button class="modal-close" onclick="closeModal()" aria-label="Close">✕</button>
         <img src="assets/logos/logo-icon-white.svg" alt="Sprout" class="cert-logo" />
         <h2>Certificate of Completion</h2>
         <p>Sprout Learn · Sprout Solutions</p>
@@ -1080,7 +1080,7 @@ function showCreatePathModal() {
     <div class="modal" onclick="event.stopPropagation()" style="max-width:600px;width:95vw">
       <div class="modal-header">
         <h3>New Learning Path</h3>
-        <button class="gmodal-close" onclick="closeModal()">✕</button>
+        <button class="gmodal-close" onclick="closeModal()" aria-label="Close">✕</button>
       </div>
       <div class="modal-body" style="max-height:70vh;overflow-y:auto">
         <div class="form-group">
@@ -1116,7 +1116,7 @@ function showEditPathModal(pathId) {
     <div class="modal" onclick="event.stopPropagation()" style="max-width:600px;width:95vw">
       <div class="modal-header">
         <h3>Edit Learning Path</h3>
-        <button class="gmodal-close" onclick="closeModal()">✕</button>
+        <button class="gmodal-close" onclick="closeModal()" aria-label="Close">✕</button>
       </div>
       <div class="modal-body" style="max-height:70vh;overflow-y:auto">
         <div class="form-group">
@@ -1181,7 +1181,7 @@ function renderPathSelectedList() {
           <div style="display:flex;gap:.25rem">
             ${i > 0 ? `<button class="btn btn-outline btn-sm" style="padding:.2rem .45rem" onclick="moveCourseInPath('${cid}',-1)">↑</button>` : ''}
             ${i < _pathCourseIds.length - 1 ? `<button class="btn btn-outline btn-sm" style="padding:.2rem .45rem" onclick="moveCourseInPath('${cid}',1)">↓</button>` : ''}
-            <button class="btn btn-outline btn-sm" style="padding:.2rem .45rem;color:var(--danger)" onclick="removeCourseFromPath('${cid}')">✕</button>
+            <button class="btn btn-outline btn-sm" style="padding:.2rem .45rem;color:var(--danger)" onclick="removeCourseFromPath('${cid}')" aria-label="Remove course from path">✕</button>
           </div>
         </div>`).join('')}
     </div>`;
@@ -1239,7 +1239,7 @@ function deletePath(pathId) {
   if (!path) return;
   showModal(`
     <div class="modal" onclick="event.stopPropagation()" style="max-width:380px">
-      <div class="modal-header"><h3>Delete Path</h3><button class="gmodal-close" onclick="closeModal()">✕</button></div>
+      <div class="modal-header"><h3>Delete Path</h3><button class="gmodal-close" onclick="closeModal()" aria-label="Close">✕</button></div>
       <div class="modal-body"><p>Delete <strong>${esc(path.title)}</strong>? Individual course assignments won't be affected.</p></div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -1273,7 +1273,7 @@ function showAssignPathModalFiltered(pathId, filterTeamId) {
     <div class="modal" onclick="event.stopPropagation()" style="max-width:460px;width:95vw">
       <div class="modal-header">
         <h3>Assign: ${esc(path.title)}</h3>
-        <button class="gmodal-close" onclick="closeModal()">✕</button>
+        <button class="gmodal-close" onclick="closeModal()" aria-label="Close">✕</button>
       </div>
       <div class="modal-body">
         <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:.75rem">Assigns all ${path.courseIds.length} course${path.courseIds.length !== 1 ? 's' : ''} in this path.</p>

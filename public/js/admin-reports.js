@@ -17,7 +17,7 @@ function renderAdminSettings(filterTeam = '', filterRole = '') {
                 <span style="font-weight:600">${esc(team.name)}</span>
                 <div style="display:flex;gap:.5rem">
                   <button class="btn btn-outline btn-sm" onclick="showRenameTeamModal('${team.id}','${esc(team.name)}')">✏️ Rename</button>
-                  <button class="btn btn-danger btn-sm" onclick="deleteTeam('${team.id}','${esc(team.name)}')">🗑</button>
+                  <button class="btn btn-danger btn-sm" onclick="deleteTeam('${team.id}','${esc(team.name)}')" aria-label="Delete team ${esc(team.name)}">🗑</button>
                 </div>
               </div>`).join('')}
       </div>
@@ -81,8 +81,8 @@ function renderAdminSettings(filterTeam = '', filterRole = '') {
               </div>
               <div style="display:flex;gap:.4rem;align-items:center;flex-shrink:0">
                 ${member.isAdmin ? `<span class="badge badge-done">Admin</span>` : `<span class="badge badge-none">Learner</span>`}
-                ${member.id !== currentUser.id ? `<button class="btn btn-outline btn-sm" onclick="${member.isAdmin ? `demoteUser('${member.id}')` : `promoteUser('${member.id}')`}">${member.isAdmin ? '⬇' : '⬆'}</button>` : ''}
-                <button class="btn btn-outline btn-sm" onclick="showEditUserModal('${member.id}')">✏️</button>
+                ${member.id !== currentUser.id ? `<button class="btn btn-outline btn-sm" onclick="${member.isAdmin ? `demoteUser('${member.id}')` : `promoteUser('${member.id}')`}" aria-label="${member.isAdmin ? 'Make learner' : 'Make admin'}">${member.isAdmin ? '⬇' : '⬆'}</button>` : ''}
+                <button class="btn btn-outline btn-sm" onclick="showEditUserModal('${member.id}')" aria-label="Edit ${esc(member.name)}">✏️</button>
               </div>
             </div>`;
           }).join('')}
@@ -97,20 +97,17 @@ async function setActiveGame(game) {
 }
 
 function showAddTeamModal() {
-  showModal(`
-    <div class="modal" onclick="event.stopPropagation()">
-      <div class="gmodal-header"><h2>Add Team</h2><button class="gmodal-close" onclick="closeModal()">✕</button></div>
-      <div class="gmodal-body">
-        <div class="form-group">
-          <label class="form-label">Team Name *</label>
-          <input id="new-team-name" class="form-input" placeholder="e.g. Sales, Engineering, HR" />
-        </div>
-      </div>
-      <div class="gmodal-footer">
-        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="addTeam()">Add Team</button>
-      </div>
-    </div>`);
+  showModal(modalShell({
+    title: 'Add Team',
+    bodyHTML: `
+      <div class="form-group">
+        <label class="form-label">Team Name *</label>
+        <input id="new-team-name" class="form-input" placeholder="e.g. Sales, Engineering, HR" />
+      </div>`,
+    footerHTML: `
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="addTeam()">Add Team</button>`,
+  }));
 }
 
 async function addTeam() {
@@ -126,20 +123,17 @@ async function addTeam() {
 }
 
 function showRenameTeamModal(id, currentName) {
-  showModal(`
-    <div class="modal" onclick="event.stopPropagation()">
-      <div class="gmodal-header"><h2>Rename Team</h2><button class="gmodal-close" onclick="closeModal()">✕</button></div>
-      <div class="gmodal-body">
-        <div class="form-group">
-          <label class="form-label">Team Name *</label>
-          <input id="rename-team-name" class="form-input" value="${esc(currentName)}" />
-        </div>
-      </div>
-      <div class="gmodal-footer">
-        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="renameTeam('${id}')">Save</button>
-      </div>
-    </div>`);
+  showModal(modalShell({
+    title: 'Rename Team',
+    bodyHTML: `
+      <div class="form-group">
+        <label class="form-label">Team Name *</label>
+        <input id="rename-team-name" class="form-input" value="${esc(currentName)}" />
+      </div>`,
+    footerHTML: `
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="renameTeam('${id}')">Save</button>`,
+  }));
 }
 
 async function renameTeam(id) {
@@ -169,27 +163,24 @@ async function deleteTeam(id, name) {
 function showEditUserModal(userId) {
   const user = getUser(userId);
   if (!user) return;
-  showModal(`
-    <div class="modal" onclick="event.stopPropagation()">
-      <div class="gmodal-header"><h2>Edit User</h2><button class="gmodal-close" onclick="closeModal()">✕</button></div>
-      <div class="gmodal-body">
-        <div class="form-group">
-          <label class="form-label">Full Name</label>
-          <input id="eu-name" class="form-input" value="${esc(user.name)}" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Team</label>
-          <select id="eu-team" class="form-select">
-            <option value="">— No team —</option>
-            ${allTeams.map(team => `<option value="${team.id}" ${user.teamId === team.id ? 'selected' : ''}>${esc(team.name)}</option>`).join('')}
-          </select>
-        </div>
+  showModal(modalShell({
+    title: 'Edit User',
+    bodyHTML: `
+      <div class="form-group">
+        <label class="form-label">Full Name</label>
+        <input id="eu-name" class="form-input" value="${esc(user.name)}" />
       </div>
-      <div class="gmodal-footer">
-        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveUserEdit('${userId}')">Save</button>
-      </div>
-    </div>`);
+      <div class="form-group">
+        <label class="form-label">Team</label>
+        <select id="eu-team" class="form-select">
+          <option value="">— No team —</option>
+          ${allTeams.map(team => `<option value="${team.id}" ${user.teamId === team.id ? 'selected' : ''}>${esc(team.name)}</option>`).join('')}
+        </select>
+      </div>`,
+    footerHTML: `
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveUserEdit('${userId}')">Save</button>`,
+  }));
 }
 
 async function saveUserEdit(userId) {
@@ -320,7 +311,7 @@ function renderLeaderboard(isAdmin, filterCourseId) {
               const teamMedals = ['🥇','🥈','🥉'];
               const isMe = standing.team.id === myTeamId;
               const barW = maxRate > 0 ? Math.round((standing.rate / maxRate) * 100) : 0;
-              const barColor = standing.rate >= 70 ? '#2e7d32' : standing.rate >= 40 ? '#f57c00' : '#c62828';
+              const barColor = standing.rate >= 70 ? 'var(--status-success)' : standing.rate >= 40 ? 'var(--status-warning)' : 'var(--status-danger)';
               return `<div class="lb-team-item ${isMe?'lb-team-item--me':''}" style="animation-delay:${standingIndex*0.08}s">
                 <div class="lb-team-rank">${teamMedals[standingIndex]||`#${standingIndex+1}`}</div>
                 <div style="flex:1;min-width:0">
@@ -405,14 +396,14 @@ function renderAdminReports() {
         stroke-dasharray="${circ}" stroke-dashoffset="${offset}"
         stroke-linecap="round" transform="rotate(-90 74 74)"
         style="transition:stroke-dashoffset 1.1s cubic-bezier(.4,0,.2,1)"/>
-      <text x="74" y="69" text-anchor="middle" font-size="24" font-weight="800" fill="#1B3A1B">${pct}%</text>
+      <text x="74" y="69" text-anchor="middle" font-size="24" font-weight="800" fill="#092903">${pct}%</text>
       <text x="74" y="88" text-anchor="middle" font-size="10" fill="#5a6a5a">${label}</text>
     </svg>`;
   };
 
   // Horizontal bar for team chart
   const maxTeamRate = Math.max(...teamRows.map(teamRow => teamRow.rate), 1);
-  const teamBarColor = teamRow => teamRow.rate >= 70 ? '#2e7d32' : teamRow.rate >= 40 ? '#f59c00' : '#e53935';
+  const teamBarColor = teamRow => teamRow.rate >= 70 ? 'var(--status-success)' : teamRow.rate >= 40 ? 'var(--status-warning)' : 'var(--status-danger)';
 
   setMain(`
     <div class="page-header fade-up" style="display:flex;align-items:center;flex-wrap:wrap;gap:.5rem">
@@ -424,23 +415,10 @@ function renderAdminReports() {
     </div>
 
     <div class="stats-grid">
-      <div class="stat-card" style="border-top:3px solid #1B3A1B;animation-delay:0s">
-        <div class="stat-label">Total Learners</div>
-        <div class="stat-value" data-target="${totalLearners}">0</div>
-      </div>
-      <div class="stat-card" style="border-top:3px solid #2d5a2d;animation-delay:.07s">
-        <div class="stat-label">Total Completions</div>
-        <div class="stat-value" data-target="${totalCompletions}">0</div>
-      </div>
-      <div class="stat-card" style="border-top:3px solid #3a7a3a;animation-delay:.14s">
-        <div class="stat-label">Courses Available</div>
-        <div class="stat-value" data-target="${courses.length}">0</div>
-      </div>
-      <div class="stat-card" style="border-top:3px solid #4a9e4a;animation-delay:.21s">
-        <div class="stat-label">Avg Assessment Score</div>
-        <div class="stat-value" data-target="${avgScore}">0</div>
-        <div class="stat-suffix">%</div>
-      </div>
+      ${statCard('Total Learners', totalLearners, '', '#092903', 0)}
+      ${statCard('Total Completions', totalCompletions, '', '#2d5a2d', 1)}
+      ${statCard('Courses Available', courses.length, '', '#3a7a3a', 2)}
+      ${statCard('Avg Assessment Score', avgScore, '%', '#4a9e4a', 3)}
     </div>
 
     <div class="reports-charts-row">
@@ -449,11 +427,11 @@ function renderAdminReports() {
         <div class="reports-chart-title">Overall Completion Rate</div>
         <div style="display:flex;gap:2rem;align-items:center;justify-content:center;flex-wrap:wrap;padding:.5rem 0">
           <div style="text-align:center">
-            ${donutChart(completionRate, 'completion', '#2e7d32')}
+            ${donutChart(completionRate, 'completion', 'var(--status-success)')}
             <div style="font-size:.78rem;color:var(--text-muted);margin-top:.3rem">${totalCompletions} of ${totalAssigned} assigned</div>
           </div>
           <div style="text-align:center">
-            ${donutChart(avgScore, 'avg score', '#1565c0')}
+            ${donutChart(avgScore, 'avg score', 'var(--status-info)')}
             <div style="font-size:.78rem;color:var(--text-muted);margin-top:.3rem">${scoredProgress.length} assessment${scoredProgress.length!==1?'s':''} taken</div>
           </div>
         </div>
@@ -493,8 +471,8 @@ function renderAdminReports() {
             <div style="flex:1;min-width:0">
               <div style="font-weight:600;font-size:.9rem">${esc(user.name)}</div>
               <div style="font-size:.77rem;color:var(--text-muted);margin-bottom:.35rem">${esc(teamName)}</div>
-              <div style="background:#e8f5e9;border-radius:99px;height:5px;overflow:hidden">
-                <div style="width:${Math.round((done/maxDone)*100)}%;height:100%;background:#2e7d32;border-radius:99px;transition:width .8s ease"></div>
+              <div class="progress-bar-wrap">
+                <div class="progress-bar" style="width:${Math.round((done/maxDone)*100)}%;background:var(--status-success)"></div>
               </div>
             </div>
             <div style="text-align:right;font-size:.82rem;margin-left:.75rem;flex-shrink:0">
@@ -520,7 +498,7 @@ function renderAdminReports() {
           </tr></thead>
           <tbody>
             ${courseRows.length ? courseRows.map(courseRow => {
-              const barColor = courseRow.passRate >= 70 ? '#2e7d32' : courseRow.passRate >= 40 ? '#f57c00' : courseRow.passRate > 0 ? '#c62828' : '#ccc';
+              const barColor = courseRow.passRate >= 70 ? 'var(--status-success)' : courseRow.passRate >= 40 ? 'var(--status-warning)' : courseRow.passRate > 0 ? 'var(--status-danger)' : '#ccc';
               return `<tr class="reports-table-row--clickable" onclick="openReportsCoursePanel('${courseRow.course.id}')">
                 <td>
                   <div style="display:flex;align-items:center;gap:.6rem">
@@ -535,8 +513,8 @@ function renderAdminReports() {
                 <td style="text-align:center;font-weight:600">${courseRow.completed}</td>
                 <td>
                   <div style="display:flex;align-items:center;gap:.5rem;min-width:120px">
-                    <div style="flex:1;background:#e8f5e9;border-radius:99px;height:7px;overflow:hidden">
-                      <div style="width:${courseRow.passRate}%;height:100%;background:${barColor};border-radius:99px;transition:width .7s ease"></div>
+                    <div class="progress-bar-wrap progress-bar-wrap--lg" style="flex:1">
+                      <div class="progress-bar" style="width:${courseRow.passRate}%;background:${barColor}"></div>
                     </div>
                     <span style="font-size:.8rem;font-weight:700;color:${barColor};white-space:nowrap">${courseRow.passRate}%</span>
                   </div>
@@ -557,37 +535,31 @@ function renderAdminReports() {
 
 function showExportModal() {
   const exportableCourses = courses.filter(course => course.published !== false);
-  showModal(`
-    <div class="modal" onclick="event.stopPropagation()">
-      <div class="gmodal-header">
-        <h2>Export Report CSV</h2>
-        <button class="gmodal-close" onclick="closeModal()">✕</button>
+  showModal(modalShell({
+    title: 'Export Report CSV',
+    bodyHTML: `
+      <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1rem">Select courses to export per-learner data. Leave all unchecked to export an overall learner summary.</p>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+        <div style="font-size:.82rem;font-weight:700;color:var(--text)">Courses</div>
+        <button class="btn btn-outline btn-sm" onclick="toggleAllExportCourses()">Select All</button>
       </div>
-      <div class="gmodal-body">
-        <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1rem">Select courses to export per-learner data. Leave all unchecked to export an overall learner summary.</p>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
-          <div style="font-size:.82rem;font-weight:700;color:var(--text)">Courses</div>
-          <button class="btn btn-outline btn-sm" onclick="toggleAllExportCourses()">Select All</button>
-        </div>
-        <div style="max-height:240px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
-          ${exportableCourses.map(course => `
-            <label class="export-course-option">
-              <input type="checkbox" class="export-course-cb" value="${course.id}" onchange="updateExportPreview()" />
-              <div style="min-width:0;flex:1">
-                <div style="font-size:.85rem;font-weight:600">${esc(course.title)}</div>
-                <div style="font-size:.75rem;color:var(--text-muted)">${esc(course.category)}</div>
-              </div>
-            </label>`).join('')}
-        </div>
-        <div id="export-preview" style="margin-top:1rem;font-size:.78rem;color:var(--text-muted);background:#f9fbf9;border-radius:8px;padding:.6rem .75rem;border:1px solid var(--border)">
-          <strong>Columns:</strong> Name, Team, Email, Assigned, Completed, Avg Progress %, Avg Score %
-        </div>
+      <div style="max-height:240px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
+        ${exportableCourses.map(course => `
+          <label class="export-course-option">
+            <input type="checkbox" class="export-course-cb" value="${course.id}" onchange="updateExportPreview()" />
+            <div style="min-width:0;flex:1">
+              <div style="font-size:.85rem;font-weight:600">${esc(course.title)}</div>
+              <div style="font-size:.75rem;color:var(--text-muted)">${esc(course.category)}</div>
+            </div>
+          </label>`).join('')}
       </div>
-      <div class="gmodal-footer">
-        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="exportReportsCsv()">⬇ Download CSV</button>
-      </div>
-    </div>`);
+      <div id="export-preview" style="margin-top:1rem;font-size:.78rem;color:var(--text-muted);background:#f9fbf9;border-radius:8px;padding:.6rem .75rem;border:1px solid var(--border)">
+        <strong>Columns:</strong> Name, Team, Email, Assigned, Completed, Avg Progress %, Avg Score %
+      </div>`,
+    footerHTML: `
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="exportReportsCsv()">⬇ Download CSV</button>`,
+  }));
 }
 
 function toggleAllExportCourses() {
@@ -696,9 +668,7 @@ function renderReportsUser(userId) {
         <tbody>
           ${rows.length ? rows.map(({ course, progressEntry }) => {
             if (!course) return '';
-            const statusColor = progressEntry.completed ? '#2e7d32' : '#f57c00';
-            const statusLabel = progressEntry.completed ? '✅ Completed' : progressEntry.currentSlide > 0 ? '🕐 In Progress' : '○ Not Started';
-            const pct = progressEntry.completed ? 100 : Math.min(80, course.totalPages ? Math.round((progressEntry.currentSlide / course.totalPages) * 100) : 0);
+            const { color: statusColor, label: statusLabel, pct } = progressStatus(progressEntry, course);
             return `<tr>
               <td>
                 <div style="display:flex;align-items:center;gap:.6rem">
@@ -713,8 +683,8 @@ function renderReportsUser(userId) {
               <td style="text-align:center;font-weight:700;color:var(--primary)">${progressEntry.score !== null && progressEntry.score !== undefined ? progressEntry.score + '%' : '—'}</td>
               <td style="min-width:120px">
                 <div style="display:flex;align-items:center;gap:.5rem">
-                  <div style="flex:1;background:#e8f5e9;border-radius:99px;height:7px;overflow:hidden">
-                    <div style="width:${pct}%;height:100%;background:${progressEntry.completed ? '#2e7d32' : '#4a9e4a'};border-radius:99px"></div>
+                  <div class="progress-bar-wrap progress-bar-wrap--lg" style="flex:1">
+                    <div class="progress-bar" style="width:${pct}%;background:${progressEntry.completed ? 'var(--status-success)' : '#4a9e4a'}"></div>
                   </div>
                   <span style="font-size:.78rem;font-weight:600;color:var(--text-muted)">${pct}%</span>
                 </div>
@@ -735,7 +705,7 @@ function renderReportsCourse(courseId) {
   const scores = assignedUsers.map(user => getProgress(user.id, courseId)).filter(progressEntry => progressEntry.score !== null && progressEntry.score !== undefined).map(progressEntry => progressEntry.score);
   const avgScore = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : null;
   const passRate = assignedUsers.length ? Math.round((completedUsers.length / assignedUsers.length) * 100) : 0;
-  const barColor = passRate >= 70 ? '#2e7d32' : passRate >= 40 ? '#f57c00' : '#c62828';
+  const barColor = passRate >= 70 ? 'var(--status-success)' : passRate >= 40 ? 'var(--status-warning)' : 'var(--status-danger)';
 
   setMain(`
     <div class="page-header fade-up">
@@ -767,9 +737,7 @@ function renderReportsCourse(courseId) {
           ${assignedUsers.length ? assignedUsers.map(user => {
             const progressEntry = getProgress(user.id, courseId);
             const teamName = allTeams.find(team => team.id === user.teamId)?.name || '—';
-            const statusColor = progressEntry.completed ? '#2e7d32' : '#f57c00';
-            const statusLabel = progressEntry.completed ? '✅ Completed' : progressEntry.currentSlide > 0 ? '🕐 In Progress' : '○ Not Started';
-            const pct = progressEntry.completed ? 100 : Math.min(80, course.totalPages ? Math.round((progressEntry.currentSlide / course.totalPages) * 100) : 0);
+            const { color: statusColor, label: statusLabel, pct } = progressStatus(progressEntry, course);
             return `<tr>
               <td>
                 <div style="display:flex;align-items:center;gap:.6rem">
@@ -782,8 +750,8 @@ function renderReportsCourse(courseId) {
               <td style="text-align:center;font-weight:700;color:var(--primary)">${progressEntry.score !== null && progressEntry.score !== undefined ? progressEntry.score + '%' : '—'}</td>
               <td style="min-width:120px">
                 <div style="display:flex;align-items:center;gap:.5rem">
-                  <div style="flex:1;background:#e8f5e9;border-radius:99px;height:7px;overflow:hidden">
-                    <div style="width:${pct}%;height:100%;background:${progressEntry.completed ? '#2e7d32' : '#4a9e4a'};border-radius:99px"></div>
+                  <div class="progress-bar-wrap progress-bar-wrap--lg" style="flex:1">
+                    <div class="progress-bar" style="width:${pct}%;background:${progressEntry.completed ? 'var(--status-success)' : '#4a9e4a'}"></div>
                   </div>
                   <span style="font-size:.78rem;font-weight:600;color:var(--text-muted)">${pct}%</span>
                 </div>

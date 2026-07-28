@@ -175,6 +175,7 @@ async function googleLogin() {
 }
 
 async function logout() {
+  await sb.removeAllChannels();
   await sb.auth.signOut();
   currentUser = null;
   adminViewingAsLearner = false;

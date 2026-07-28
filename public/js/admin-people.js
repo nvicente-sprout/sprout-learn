@@ -20,33 +20,26 @@ async function showAssignModal(courseId, filterTeamId = '') {
   const course = getCourse(courseId);
   const visible = filterTeamId ? learners().filter(user => user.teamId === filterTeamId) : learners();
   const teamTabs = [{ id: '', name: 'All' }, ...allTeams.map(team => ({ id: team.id, name: team.name }))];
-  showModal(`
-    <div class="modal" onclick="event.stopPropagation()">
-      <div class="gmodal-header">
-        <h2>Assign: ${esc(course?.title || '')}</h2>
-        <button class="gmodal-close" onclick="closeModal()">✕</button>
+  showModal(modalShell({
+    title: `Assign: ${esc(course?.title || '')}`,
+    bodyHTML: `
+      <div style="display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.75rem">
+        ${teamTabs.map(tab => `<button class="btn btn-sm ${filterTeamId===tab.id?'btn-primary':'btn-outline'}" onclick="showAssignModal('${courseId}','${tab.id}')">${esc(tab.name)}</button>`).join('')}
       </div>
-      <div class="gmodal-body">
-        <div style="display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.75rem">
-          ${teamTabs.map(tab => `<button class="btn btn-sm ${filterTeamId===tab.id?'btn-primary':'btn-outline'}" onclick="showAssignModal('${courseId}','${tab.id}')">${esc(tab.name)}</button>`).join('')}
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
-          <span style="font-size:.85rem;color:var(--text-muted)">${visible.length} member${visible.length!==1?'s':''}</span>
-          <button class="btn btn-outline btn-sm" onclick="toggleAssignAll('${courseId}','${filterTeamId}')">Assign All</button>
-        </div>
-        <div class="assignee-list" id="assignee-list">
-          ${visible.map(user => `
-            <div class="assignee-item ${isAssigned(user.id,courseId)?'selected':''}" id="assignee-${user.id}" onclick="toggleAssignee('${user.id}','${courseId}')">
-              <input type="checkbox" class="assignee-check" ${isAssigned(user.id,courseId)?'checked':''} />
-              ${avatarHTML(user, 32)}
-              <div><div style="font-weight:600;font-size:.88rem">${esc(user.name)}</div><div style="font-size:.75rem;color:var(--text-muted)">${esc(allTeams.find(team=>team.id===user.teamId)?.name||'')}</div></div>
-            </div>`).join('')}
-        </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+        <span style="font-size:.85rem;color:var(--text-muted)">${visible.length} member${visible.length!==1?'s':''}</span>
+        <button class="btn btn-outline btn-sm" onclick="toggleAssignAll('${courseId}','${filterTeamId}')">Assign All</button>
       </div>
-      <div class="gmodal-footer">
-        <button class="btn btn-outline" onclick="closeModal()">Done</button>
-      </div>
-    </div>`);
+      <div class="assignee-list" id="assignee-list">
+        ${visible.map(user => `
+          <div class="assignee-item ${isAssigned(user.id,courseId)?'selected':''}" id="assignee-${user.id}" onclick="toggleAssignee('${user.id}','${courseId}')">
+            <input type="checkbox" class="assignee-check" ${isAssigned(user.id,courseId)?'checked':''} />
+            ${avatarHTML(user, 32)}
+            <div><div style="font-weight:600;font-size:.88rem">${esc(user.name)}</div><div style="font-size:.75rem;color:var(--text-muted)">${esc(allTeams.find(team=>team.id===user.teamId)?.name||'')}</div></div>
+          </div>`).join('')}
+      </div>`,
+    footerHTML: `<button class="btn btn-outline" onclick="closeModal()">Done</button>`,
+  }));
 }
 
 async function toggleAssignee(userId, courseId) {
@@ -160,7 +153,7 @@ function renderAdminTeam(filterTeam = '', filterCourse = '', searchQ = '', sortB
     const assigned   = getUserAssignments(user.id).length;
     const done       = userCompletions(user.id);
     const avg        = userAvgProgress(user.id);
-    const badgeColor = done === assigned && assigned > 0 ? '#2e7d32' : done > 0 ? '#e65100' : '#757575';
+    const badgeColor = done === assigned && assigned > 0 ? 'var(--status-success)' : done > 0 ? 'var(--status-warning)' : '#757575';
 
     let progressBlock = '';
     if (filterCourse) {
@@ -189,7 +182,7 @@ function renderAdminTeam(filterTeam = '', filterCourse = '', searchQ = '', sortB
           <div class="progress-bar-wrap"><div class="progress-bar" style="width:0%"></div></div>`;
       }
     } else {
-      const avgColor = avg >= 70 ? '#2e7d32' : avg >= 40 ? '#e65100' : '#757575';
+      const avgColor = avg >= 70 ? 'var(--status-success)' : avg >= 40 ? 'var(--status-warning)' : '#757575';
       progressBlock = `
         <div class="member-stat-row">
           <div class="member-stat-box"><strong>${assigned}</strong><span>Assigned</span></div>
@@ -320,20 +313,17 @@ async function demoteUser(userId) {
 function editUserRole(userId) {
   const user = getUser(userId);
   if (!user) return;
-  showModal(`
-    <div class="modal" onclick="event.stopPropagation()">
-      <div class="gmodal-header"><h2>Edit Name</h2><button class="gmodal-close" onclick="closeModal()">✕</button></div>
-      <div class="gmodal-body">
-        <div class="form-group">
-          <label class="form-label">Name</label>
-          <input id="edit-name" class="form-input" value="${esc(user.name)}" />
-        </div>
-      </div>
-      <div class="gmodal-footer">
-        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveUserRole('${userId}')">Save</button>
-      </div>
-    </div>`);
+  showModal(modalShell({
+    title: 'Edit Name',
+    bodyHTML: `
+      <div class="form-group">
+        <label class="form-label">Name</label>
+        <input id="edit-name" class="form-input" value="${esc(user.name)}" />
+      </div>`,
+    footerHTML: `
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveUserRole('${userId}')">Save</button>`,
+  }));
 }
 
 async function saveUserRole(userId) {

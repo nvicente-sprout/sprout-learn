@@ -1,4 +1,10 @@
-﻿// ─── Admin Dashboard ──────────────────────────────────────────────────────────
+﻿// ─── Auth Headers ─────────────────────────────────────────────────────────────
+async function authHeaders() {
+  const { data: { session } } = await sb.auth.getSession();
+  return session ? { Authorization: `Bearer ${session.access_token}` } : {};
+}
+
+// ─── Admin Dashboard ──────────────────────────────────────────────────────────
 function renderAdminDashboard() {
   setTitle('Dashboard');
   const totalCompletions = learners().reduce((sum, user) => sum + userCompletions(user.id), 0);
@@ -16,7 +22,7 @@ function renderAdminDashboard() {
       <p>Here's your team's learning overview</p>
     </div>
     <div class="stats-grid">
-      ${statCard('Team Members', learners().length, '', '#1B3A1B', 0)}
+      ${statCard('Team Members', learners().length, '', '#092903', 0)}
       ${statCard('Total Courses', courses.length, '', '#2d5a2d', 1)}
       ${statCard('Completions', totalCompletions, '', '#3a7a3a', 2)}
       ${statCard('Avg Progress', avgProg, '%', '#4a9e4a', 3)}
@@ -105,7 +111,7 @@ function adminCoverHTML(course) {
   const inner = course.coverUrl
     ? `<img src="${course.coverUrl}" alt="" />`
     : `<img src="assets/logos/logo-icon-green.svg" alt="Sprout Learn" class="cover-placeholder-logo" /><span class="cover-placeholder-title">${esc(course.title)}</span>`;
-  return `<div class="course-card-cover course-card-cover--editable" onclick="triggerCoverUpload('${course.id}')" title="Change cover image">
+  return `<div class="course-card-cover course-card-cover--editable" onclick="triggerCoverUpload('${course.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();triggerCoverUpload('${course.id}')}" role="button" tabindex="0" title="Change cover image" aria-label="Change cover image for ${esc(course.title)}">
     ${inner}
     <div class="cover-edit-overlay">📷 Change Cover</div>
     <input type="file" accept="image/*" id="cover-input-${course.id}" style="display:none" onchange="handleCoverChange('${course.id}',this)" />
@@ -133,7 +139,7 @@ function adminCourseCard(course) {
         <button class="btn btn-outline btn-sm" onclick="showAssignModal('${course.id}')">👥 Assign</button>
         <button class="btn btn-outline btn-sm" onclick="${qs ? `showManualBuilderModal('${course.id}')` : `showAddQuestionsModal('${course.id}')`}">${qs ? '✏️ Edit Questions' : '+ Questions'}</button>
         ${isPdf ? `<button class="btn btn-outline btn-sm" onclick="generateLessonForExisting('${course.id}')">${hasLesson ? '🪄 Regenerate Lesson' : '🪄 Generate Lesson'}</button>` : ''}
-        <button class="btn btn-danger btn-sm" onclick="deleteCourse('${course.id}')">🗑</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteCourse('${course.id}')" aria-label="Delete course ${esc(course.title)}">🗑</button>
       </div>
     </div>
   </div>`;
@@ -229,85 +235,74 @@ async function handleCoverChange(courseId, input) {
 // ─── Create Course Modal ──────────────────────────────────────────────────────
 // ─── Add Course Picker ────────────────────────────────────────────────────────
 function showAddCoursePickerModal() {
-  showModal(`
-    <div class="modal" onclick="event.stopPropagation()">
-      <div class="gmodal-header">
-        <h2>Add Course</h2>
-        <button class="gmodal-close" onclick="closeModal()">✕</button>
-      </div>
-      <div class="gmodal-body">
-        <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1rem">Choose a content type to get started</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.65rem">
-          <button class="course-type-pick" onclick="closeModal();showUploadModal()">
-            <span class="course-type-icon">📄</span>
-            <div class="course-type-label">PDF Upload</div>
-            <div class="course-type-desc">Upload a PDF as slides</div>
-          </button>
-          <button class="course-type-pick" onclick="closeModal();showAddUrlCourseModal('youtube')">
-            <span class="course-type-icon">🎬</span>
-            <div class="course-type-label">YouTube Video</div>
-            <div class="course-type-desc">Embed a YouTube video</div>
-          </button>
-          <button class="course-type-pick" onclick="closeModal();showAddUrlCourseModal('slides')">
-            <span class="course-type-icon">📊</span>
-            <div class="course-type-label">Google Slides</div>
-            <div class="course-type-desc">Embed a Slides presentation</div>
-          </button>
-          <button class="course-type-pick" onclick="closeModal();showAddScormModal()">
-            <span class="course-type-icon">📦</span>
-            <div class="course-type-label">SCORM Package</div>
-            <div class="course-type-desc">Upload a SCORM .zip file</div>
-          </button>
-          <button class="course-type-pick" onclick="closeModal();showAddHtmlSlidesModal()">
-            <span class="course-type-icon">🖥️</span>
-            <div class="course-type-label">HTML Slides</div>
-            <div class="course-type-desc">Paste HTML from Claude</div>
-          </button>
-          <button class="course-type-pick" style="grid-column:1/-1" onclick="closeModal();showCreateCourseModal()">
-            <span class="course-type-icon">📝</span>
-            <div class="course-type-label">No Content Yet</div>
-            <div class="course-type-desc">Create a placeholder — add content later</div>
-          </button>
-        </div>
-      </div>
-    </div>`);
+  showModal(modalShell({
+    title: 'Add Course',
+    bodyHTML: `
+      <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1rem">Choose a content type to get started</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.65rem">
+        <button class="course-type-pick" onclick="closeModal();showUploadModal()">
+          <span class="course-type-icon">📄</span>
+          <div class="course-type-label">PDF Upload</div>
+          <div class="course-type-desc">Upload a PDF as slides</div>
+        </button>
+        <button class="course-type-pick" onclick="closeModal();showAddUrlCourseModal('youtube')">
+          <span class="course-type-icon">🎬</span>
+          <div class="course-type-label">YouTube Video</div>
+          <div class="course-type-desc">Embed a YouTube video</div>
+        </button>
+        <button class="course-type-pick" onclick="closeModal();showAddUrlCourseModal('slides')">
+          <span class="course-type-icon">📊</span>
+          <div class="course-type-label">Google Slides</div>
+          <div class="course-type-desc">Embed a Slides presentation</div>
+        </button>
+        <button class="course-type-pick" onclick="closeModal();showAddScormModal()">
+          <span class="course-type-icon">📦</span>
+          <div class="course-type-label">SCORM Package</div>
+          <div class="course-type-desc">Upload a SCORM .zip file</div>
+        </button>
+        <button class="course-type-pick" onclick="closeModal();showAddHtmlSlidesModal()">
+          <span class="course-type-icon">🖥️</span>
+          <div class="course-type-label">HTML Slides</div>
+          <div class="course-type-desc">Paste HTML from Claude</div>
+        </button>
+        <button class="course-type-pick" style="grid-column:1/-1" onclick="closeModal();showCreateCourseModal()">
+          <span class="course-type-icon">📝</span>
+          <div class="course-type-label">No Content Yet</div>
+          <div class="course-type-desc">Create a placeholder — add content later</div>
+        </button>
+      </div>`,
+  }));
 }
 
 function showCreateCourseModal() {
-  showModal(`
-    <div class="modal" onclick="event.stopPropagation()">
-      <div class="gmodal-header">
-        <h2>New Course</h2>
-        <button class="gmodal-close" onclick="closeModal()">✕</button>
+  showModal(modalShell({
+    title: 'New Course',
+    bodyHTML: `
+      <div class="form-group">
+        <label class="form-label">Title *</label>
+        <input id="nc-title" class="form-input" placeholder="Course title" />
       </div>
-      <div class="gmodal-body">
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <textarea id="nc-desc" class="form-textarea" placeholder="Brief description…"></textarea>
+      </div>
+      <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Title *</label>
-          <input id="nc-title" class="form-input" placeholder="Course title" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Description</label>
-          <textarea id="nc-desc" class="form-textarea" placeholder="Brief description…"></textarea>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Category</label>
-            <select id="nc-cat" class="form-select">
-              ${CATEGORIES.map(cat => `<option>${esc(cat)}</option>`).join('')}
-            </select>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">YouTube Video ID (optional)</label>
-          <input id="nc-yt" class="form-input" placeholder="e.g. VjinpYMUMoc" />
-          <div class="form-hint">Paste just the video ID from the YouTube URL</div>
+          <label class="form-label">Category</label>
+          <select id="nc-cat" class="form-select">
+            ${CATEGORIES.map(cat => `<option>${esc(cat)}</option>`).join('')}
+          </select>
         </div>
       </div>
-      <div class="gmodal-footer">
-        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="createCourse()">Create Course</button>
-      </div>
-    </div>`);
+      <div class="form-group">
+        <label class="form-label">YouTube Video ID (optional)</label>
+        <input id="nc-yt" class="form-input" placeholder="e.g. VjinpYMUMoc" />
+        <div class="form-hint">Paste just the video ID from the YouTube URL</div>
+      </div>`,
+    footerHTML: `
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="createCourse()">Create Course</button>`,
+  }));
 }
 
 function createCourse() {
@@ -349,58 +344,52 @@ function showAddUrlCourseModal(hint = '') {
   const title = hint === 'youtube' ? 'Add YouTube Video'
     : hint === 'slides' ? 'Add Google Slides'
     : 'Add YouTube / Google Slides';
-  showModal(`
-    <div class="modal" onclick="event.stopPropagation()">
-      <div class="gmodal-header">
-        <h2>${title}</h2>
-        <button class="gmodal-close" onclick="closeModal()">✕</button>
+  showModal(modalShell({
+    title,
+    bodyHTML: `
+      <div class="form-group">
+        <label class="form-label">Content URL *</label>
+        <input id="url-input" class="form-input" placeholder="${placeholder}" oninput="onUrlInput(this.value)" />
+        <div id="url-detect" style="font-size:.78rem;margin-top:.4rem;color:var(--text-muted)">${placeholder}</div>
       </div>
-      <div class="gmodal-body">
+      <div class="form-group">
+        <label class="form-label">Course Title *</label>
+        <input id="url-title" class="form-input" placeholder="Enter course title" />
+      </div>
+      <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Content URL *</label>
-          <input id="url-input" class="form-input" placeholder="${placeholder}" oninput="onUrlInput(this.value)" />
-          <div id="url-detect" style="font-size:.78rem;margin-top:.4rem;color:var(--text-muted)">${placeholder}</div>
+          <label class="form-label">Category</label>
+          <select id="url-cat" class="form-select">
+            ${CATEGORIES.map(cat => `<option>${esc(cat)}</option>`).join('')}
+          </select>
         </div>
-        <div class="form-group">
-          <label class="form-label">Course Title *</label>
-          <input id="url-title" class="form-input" placeholder="Enter course title" />
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Category</label>
-            <select id="url-cat" class="form-select">
-              ${CATEGORIES.map(cat => `<option>${esc(cat)}</option>`).join('')}
-            </select>
-          </div>
-        </div>
-        <p class="form-label" style="margin-bottom:.5rem">Assessment Questions</p>
-        <label class="upload-option selected" id="url-opt-ai">
-          <input type="radio" name="url-mode" value="ai" checked onchange="selectUrlMode('ai')" />
-          <div style="flex:1">
-            <div class="upload-option-title">🤖 AI Generate</div>
-            <div class="upload-option-desc">AI reads the content and auto-generates 8 questions</div>
-          </div>
-        </label>
-        <label class="upload-option" id="url-opt-manual">
-          <input type="radio" name="url-mode" value="manual" onchange="selectUrlMode('manual')" />
-          <div><div class="upload-option-title">✍️ Add Manually</div><div class="upload-option-desc">Build questions yourself after adding the course</div></div>
-        </label>
-        <label class="upload-option" id="url-opt-skip">
-          <input type="radio" name="url-mode" value="skip" onchange="selectUrlMode('skip')" />
-          <div><div class="upload-option-title">⏭ Skip for now</div><div class="upload-option-desc">Add questions later</div></div>
-        </label>
       </div>
-      <div class="gmodal-footer">
-        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="submitUrlCourse()">Add Course</button>
-      </div>
-    </div>`);
+      <p class="form-label" style="margin-bottom:.5rem">Assessment Questions</p>
+      <label class="upload-option selected" id="url-opt-ai">
+        <input type="radio" name="url-mode" value="ai" checked onchange="selectUrlMode('ai')" />
+        <div style="flex:1">
+          <div class="upload-option-title">🤖 AI Generate</div>
+          <div class="upload-option-desc">AI reads the content and auto-generates 8 questions</div>
+        </div>
+      </label>
+      <label class="upload-option" id="url-opt-manual">
+        <input type="radio" name="url-mode" value="manual" onchange="selectUrlMode('manual')" />
+        <div><div class="upload-option-title">✍️ Add Manually</div><div class="upload-option-desc">Build questions yourself after adding the course</div></div>
+      </label>
+      <label class="upload-option" id="url-opt-skip">
+        <input type="radio" name="url-mode" value="skip" onchange="selectUrlMode('skip')" />
+        <div><div class="upload-option-title">⏭ Skip for now</div><div class="upload-option-desc">Add questions later</div></div>
+      </label>`,
+    footerHTML: `
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitUrlCourse()">Add Course</button>`,
+  }));
 }
 
 function selectUrlMode(mode) {
-  ['ai','manual','skip'].forEach(mode => {
-    const el = document.getElementById(`url-opt-${m}`);
-    if (el) el.classList.toggle('selected', m === mode);
+  ['ai','manual','skip'].forEach(m2 => {
+    const el = document.getElementById(`url-opt-${m2}`);
+    if (el) el.classList.toggle('selected', m2 === mode);
   });
 }
 
@@ -415,10 +404,10 @@ function onUrlInput(val) {
   }
   if (detected?.type === 'youtube') {
     el.innerHTML = '✅ <strong>YouTube video detected</strong> · ID: ' + esc(detected.id);
-    el.style.color = '#2e7d32';
+    el.style.color = 'var(--status-success)';
   } else if (detected?.type === 'slides') {
     el.innerHTML = '✅ <strong>Google Slides detected</strong> · ID: ' + esc(detected.id);
-    el.style.color = '#2e7d32';
+    el.style.color = 'var(--status-success)';
   } else {
     el.textContent = '⚠️ URL not recognized. Use a YouTube or Google Slides URL.';
     el.style.color = '#e65100';
@@ -471,7 +460,7 @@ async function submitUrlCourse() {
         ? { type: 'youtube', videoId: detected.id }
         : { type: 'slides', presentationId: detected.id };
       const contentRes = await fetch('/api/fetch-content', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify(body),
       });
       const contentData = await contentRes.json();
@@ -509,44 +498,38 @@ async function submitUrlCourse() {
 // ─── Add SCORM Modal ──────────────────────────────────────────────────────────
 function showAddScormModal() {
   scormZipData = null;
-  showModal(`
-    <div class="modal" onclick="event.stopPropagation()">
-      <div class="gmodal-header">
-        <h2>Upload SCORM Package</h2>
-        <button class="gmodal-close" onclick="closeModal()">✕</button>
+  showModal(modalShell({
+    title: 'Upload SCORM Package',
+    bodyHTML: `
+      <div class="upload-file-box" onclick="document.getElementById('scorm-zip-input').click()" style="margin-bottom:1rem">
+        <input type="file" id="scorm-zip-input" accept=".zip" style="display:none" onchange="handleScormZip(this.files[0])" />
+        <div style="font-size:2rem">📦</div>
+        <p style="margin:.25rem 0 0;font-size:.85rem">Click to select SCORM .zip file</p>
       </div>
-      <div class="gmodal-body">
-        <div class="upload-file-box" onclick="document.getElementById('scorm-zip-input').click()" style="margin-bottom:1rem">
-          <input type="file" id="scorm-zip-input" accept=".zip" style="display:none" onchange="handleScormZip(this.files[0])" />
-          <div style="font-size:2rem">📦</div>
-          <p style="margin:.25rem 0 0;font-size:.85rem">Click to select SCORM .zip file</p>
-        </div>
-        <div id="scorm-file-info" style="display:none;background:#f1f8f1;border-radius:8px;padding:.6rem .85rem;margin-bottom:.75rem;font-size:.82rem">
-          <div id="scorm-file-name" style="font-weight:700;color:var(--primary)"></div>
-          <div id="scorm-file-stats" style="color:var(--text-muted);margin-top:.15rem"></div>
-        </div>
+      <div id="scorm-file-info" style="display:none;background:#f1f8f1;border-radius:8px;padding:.6rem .85rem;margin-bottom:.75rem;font-size:.82rem">
+        <div id="scorm-file-name" style="font-weight:700;color:var(--primary)"></div>
+        <div id="scorm-file-stats" style="color:var(--text-muted);margin-top:.15rem"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Course Title *</label>
+        <input id="scorm-title" class="form-input" placeholder="Auto-filled from package" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <textarea id="scorm-desc" class="form-textarea" placeholder="Brief description…"></textarea>
+      </div>
+      <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Course Title *</label>
-          <input id="scorm-title" class="form-input" placeholder="Auto-filled from package" />
+          <label class="form-label">Category</label>
+          <select id="scorm-cat" class="form-select">
+            ${CATEGORIES.map(cat => `<option>${esc(cat)}</option>`).join('')}
+          </select>
         </div>
-        <div class="form-group">
-          <label class="form-label">Description</label>
-          <textarea id="scorm-desc" class="form-textarea" placeholder="Brief description…"></textarea>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Category</label>
-            <select id="scorm-cat" class="form-select">
-              ${CATEGORIES.map(cat => `<option>${esc(cat)}</option>`).join('')}
-            </select>
-          </div>
-        </div>
-      </div>
-      <div class="gmodal-footer">
-        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" id="scorm-submit-btn" onclick="submitScormUpload()" disabled>Upload</button>
-      </div>
-    </div>`);
+      </div>`,
+    footerHTML: `
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="scorm-submit-btn" onclick="submitScormUpload()" disabled>Upload</button>`,
+  }));
 }
 
 async function handleScormZip(file) {
@@ -595,7 +578,7 @@ async function submitScormUpload() {
   const basePath = `scorm/${courseId}`;
 
   // Inline SCORM 1.2 shim — intercepts API calls and relays via postMessage
-  const shimScript = `<script>(function(){var d={};window.API={LMSInitialize:function(){window.parent.postMessage({type:'scorm12',action:'init'},'*');return'true'},LMSFinish:function(){window.parent.postMessage({type:'scorm12',action:'finish',data:d},'*');return'true'},LMSGetValue:function(e){return d[e]||''},LMSSetValue:function(e,v){d[e]=v;window.parent.postMessage({type:'scorm12',action:'set',element:e,value:v},'*');return'true'},LMSCommit:function(){window.parent.postMessage({type:'scorm12',action:'commit',data:d},'*');return'true'},LMSGetLastError:function(){return'0'},LMSGetErrorString:function(){return''},LMSGetDiagnostic:function(){return''}};})();<\/script>`;
+  const shimScript = `<script>(function(){var d={};window.API={LMSInitialize:function(){window.parent.postMessage({type:'scorm12',action:'init'},'*');return'true'},LMSFinish:function(){window.parent.postMessage({type:'scorm12',action:'finish',data:d},'*');return'true'},LMSGetValue:function(e){return d[e]||''},LMSSetValue:function(e,v){d[e]=v;window.parent.postMessage({type:'scorm12',action:'set',element:e,value:v},'*');return'true'},LMSCommit:function(){window.parent.postMessage({type:'scorm12',action:'commit',data:d},'*');return'true'},LMSGetLastError:function(){return'0'},LMSGetErrorString:function(){return''},LMSGetDiagnostic:function(){return''}};})();</script>`;
 
   showLoader('Uploading SCORM', `Uploading ${scormZipData.fileCount} files…`);
 
@@ -661,46 +644,41 @@ function scormContentType(filename) {
 
 // ─── HTML Slides Modal ────────────────────────────────────────────────────────
 function showAddHtmlSlidesModal() {
-  showModal(`
-    <div class="modal" onclick="event.stopPropagation()" style="max-width:640px;width:95vw">
-      <div class="gmodal-header">
-        <h2>HTML Slides Course</h2>
-        <button class="gmodal-close" onclick="closeModal()">✕</button>
-      </div>
-      <div class="gmodal-body" style="max-height:80vh;overflow-y:auto">
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Course Title *</label>
-            <input class="form-input" id="hs-title" placeholder="e.g. TeamTailor Basics" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Category</label>
-            <select class="form-input" id="hs-cat">
-              ${CATEGORIES.map(cat => `<option value="${esc(cat)}">${esc(cat)}</option>`).join('')}
-            </select>
-          </div>
+  showModal(modalShell({
+    title: 'HTML Slides Course',
+    width: 'max-width:640px;width:95vw',
+    bodyStyle: 'max-height:80vh;overflow-y:auto',
+    bodyHTML: `
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Course Title *</label>
+          <input class="form-input" id="hs-title" placeholder="e.g. TeamTailor Basics" />
         </div>
         <div class="form-group">
-          <label class="form-label">Description</label>
-          <input class="form-input" id="hs-desc" placeholder="Short description" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">HTML File</label>
-          <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:.5rem">Upload an .html file from your computer, or paste HTML below.</p>
-          <input type="file" accept=".html,.htm" id="hs-file" class="form-input" style="padding:.4rem" onchange="document.getElementById('hs-file-name').textContent = this.files[0]?.name || ''" />
-          <span id="hs-file-name" style="font-size:.8rem;color:var(--text-muted);margin-top:.25rem;display:block"></span>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Or Paste HTML</label>
-          <textarea class="form-input" id="hs-html" rows="8" placeholder="<!DOCTYPE html>..." style="font-family:monospace;font-size:.8rem;resize:vertical"></textarea>
+          <label class="form-label">Category</label>
+          <select class="form-input" id="hs-cat">
+            ${CATEGORIES.map(cat => `<option value="${esc(cat)}">${esc(cat)}</option>`).join('')}
+          </select>
         </div>
       </div>
-      <div class="gmodal-footer">
-        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="submitHtmlSlides()">Upload & Create</button>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <input class="form-input" id="hs-desc" placeholder="Short description" />
       </div>
-    </div>
-  `);
+      <div class="form-group">
+        <label class="form-label">HTML File</label>
+        <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:.5rem">Upload an .html file from your computer, or paste HTML below.</p>
+        <input type="file" accept=".html,.htm" id="hs-file" class="form-input" style="padding:.4rem" onchange="document.getElementById('hs-file-name').textContent = this.files[0]?.name || ''" />
+        <span id="hs-file-name" style="font-size:.8rem;color:var(--text-muted);margin-top:.25rem;display:block"></span>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Or Paste HTML</label>
+        <textarea class="form-input" id="hs-html" rows="8" placeholder="<!DOCTYPE html>..." style="font-family:monospace;font-size:.8rem;resize:vertical"></textarea>
+      </div>`,
+    footerHTML: `
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitHtmlSlides()">Upload & Create</button>`,
+  }));
 }
 
 async function submitHtmlSlides() {
@@ -750,67 +728,61 @@ async function submitHtmlSlides() {
 
 // ─── Upload PDF Modal ─────────────────────────────────────────────────────────
 function showUploadModal() {
-  showModal(`
-    <div class="modal" onclick="event.stopPropagation()">
-      <div class="gmodal-header">
-        <h2>Upload PDF Course</h2>
-        <button class="gmodal-close" onclick="closeModal()">✕</button>
+  showModal(modalShell({
+    title: 'Upload PDF Course',
+    bodyHTML: `
+      <div class="upload-file-box" onclick="document.getElementById('pdf-file-input').click()">
+        <div style="font-size:2rem">📄</div>
+        <p>Click to select a PDF file</p>
+        <p style="font-size:.75rem;margin-top:.25rem">One PDF per upload</p>
+        <input id="pdf-file-input" type="file" accept=".pdf" style="display:none" onchange="handlePdfSelected(this)" />
       </div>
-      <div class="gmodal-body">
-        <div class="upload-file-box" onclick="document.getElementById('pdf-file-input').click()">
-          <div style="font-size:2rem">📄</div>
-          <p>Click to select a PDF file</p>
-          <p style="font-size:.75rem;margin-top:.25rem">One PDF per upload</p>
-          <input id="pdf-file-input" type="file" accept=".pdf" style="display:none" onchange="handlePdfSelected(this)" />
-        </div>
-        <div id="upload-file-info" style="display:none;margin-bottom:1rem">
-          <div style="font-weight:600;font-size:.9rem" id="upload-file-name"></div>
-          <div style="font-size:.78rem;color:var(--text-muted)" id="upload-file-pages"></div>
-        </div>
+      <div id="upload-file-info" style="display:none;margin-bottom:1rem">
+        <div style="font-weight:600;font-size:.9rem" id="upload-file-name"></div>
+        <div style="font-size:.78rem;color:var(--text-muted)" id="upload-file-pages"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Course Title</label>
+        <input id="upload-title" class="form-input" placeholder="Auto-filled from filename" />
+      </div>
+      <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Course Title</label>
-          <input id="upload-title" class="form-input" placeholder="Auto-filled from filename" />
+          <label class="form-label">Category</label>
+          <select id="upload-cat" class="form-select">
+            ${CATEGORIES.map(cat => `<option>${esc(cat)}</option>`).join('')}
+          </select>
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Category</label>
-            <select id="upload-cat" class="form-select">
-              ${CATEGORIES.map(cat => `<option>${esc(cat)}</option>`).join('')}
-            </select>
-          </div>
+      </div>
+      <p class="form-label" style="margin-bottom:.5rem">Assessment Questions</p>
+      <label class="upload-option selected" id="opt-ai">
+        <input type="radio" name="upload-mode" value="ai" checked onchange="selectUploadMode('ai')" />
+        <div style="flex:1">
+          <div class="upload-option-title">🤖 AI Generate</div>
+          <div class="upload-option-desc">Gemini reads the PDF and auto-generates 8 questions</div>
         </div>
-        <p class="form-label" style="margin-bottom:.5rem">Assessment Questions</p>
-        <label class="upload-option selected" id="opt-ai">
-          <input type="radio" name="upload-mode" value="ai" checked onchange="selectUploadMode('ai')" />
-          <div style="flex:1">
-            <div class="upload-option-title">🤖 AI Generate</div>
-            <div class="upload-option-desc">Gemini reads the PDF and auto-generates 8 questions</div>
-          </div>
-        </label>
-        <label class="upload-option" id="opt-manual">
-          <input type="radio" name="upload-mode" value="manual" onchange="selectUploadMode('manual')" />
-          <div><div class="upload-option-title">✍️ Add Manually</div><div class="upload-option-desc">Build questions yourself after upload</div></div>
-        </label>
-        <label class="upload-option" id="opt-skip">
-          <input type="radio" name="upload-mode" value="skip" onchange="selectUploadMode('skip')" />
-          <div><div class="upload-option-title">⏭ Skip for now</div><div class="upload-option-desc">Upload slides only, add questions later</div></div>
-        </label>
-        <label class="upload-option-checkbox">
-          <input type="checkbox" id="opt-lesson-checkbox" checked />
-          <div><div class="upload-option-title">🪄 Also generate interactive lesson</div><div class="upload-option-desc">Turns the PDF text into a click-through lesson with recall/check cards, in addition to the slide viewer</div></div>
-        </label>
-      </div>
-      <div class="gmodal-footer">
-        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" id="upload-submit-btn" onclick="submitUpload()" disabled>Upload</button>
-      </div>
-    </div>`);
+      </label>
+      <label class="upload-option" id="opt-manual">
+        <input type="radio" name="upload-mode" value="manual" onchange="selectUploadMode('manual')" />
+        <div><div class="upload-option-title">✍️ Add Manually</div><div class="upload-option-desc">Build questions yourself after upload</div></div>
+      </label>
+      <label class="upload-option" id="opt-skip">
+        <input type="radio" name="upload-mode" value="skip" onchange="selectUploadMode('skip')" />
+        <div><div class="upload-option-title">⏭ Skip for now</div><div class="upload-option-desc">Upload slides only, add questions later</div></div>
+      </label>
+      <label class="upload-option-checkbox">
+        <input type="checkbox" id="opt-lesson-checkbox" checked />
+        <div><div class="upload-option-title">🪄 Also generate interactive lesson</div><div class="upload-option-desc">Turns the PDF text into a click-through lesson with recall/check cards, in addition to the slide viewer</div></div>
+      </label>`,
+    footerHTML: `
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="upload-submit-btn" onclick="submitUpload()" disabled>Upload</button>`,
+  }));
 }
 
 function selectUploadMode(mode) {
-  ['ai','manual','skip'].forEach(mode => {
-    const el = document.getElementById(`opt-${m}`);
-    if (el) el.classList.toggle('selected', m === mode);
+  ['ai','manual','skip'].forEach(m2 => {
+    const el = document.getElementById(`opt-${m2}`);
+    if (el) el.classList.toggle('selected', m2 === mode);
   });
 }
 
@@ -889,24 +861,22 @@ function readAsDataUrl(file) {
   });
 }
 
-async function submitUpload() {
-  if (!uploadedPdfData) { toast('Please select a PDF first', 'error'); return; }
+function readUploadForm() {
   const title = document.getElementById('upload-title')?.value.trim() || 'Untitled Course';
   const cat   = document.getElementById('upload-cat')?.value || CATEGORIES[0];
-  const type = 'Free';
   const mode  = document.querySelector('input[name="upload-mode"]:checked')?.value || 'ai';
-  const courseId = nextCourseId();
+  const wantsLesson = document.getElementById('opt-lesson-checkbox')?.checked ?? false;
+  return { title, cat, mode, wantsLesson };
+}
 
-  closeModal();
-  showLoader('Uploading PDF', 'Saving to cloud storage');
-
+async function uploadPdfAndCoverToStorage(courseId, pdfData) {
   // Upload PDF file to Supabase Storage
-  let pdfUrl = uploadedPdfData.dataUrl; // fallback to data URL if storage fails
-  let coverStorageUrl = uploadedPdfData.coverUrl || null;
+  let pdfUrl = pdfData.dataUrl; // fallback to data URL if storage fails
+  let coverStorageUrl = pdfData.coverUrl || null;
 
   try {
     const { error: pdfErr } = await sb.storage.from('course-files')
-      .upload(`pdfs/${courseId}.pdf`, uploadedPdfData.file, { upsert: true, contentType: 'application/pdf' });
+      .upload(`pdfs/${courseId}.pdf`, pdfData.file, { upsert: true, contentType: 'application/pdf' });
     if (!pdfErr) {
       const { data: { publicUrl } } = sb.storage.from('course-files').getPublicUrl(`pdfs/${courseId}.pdf`);
       pdfUrl = publicUrl;
@@ -914,8 +884,8 @@ async function submitUpload() {
       console.error('PDF storage upload:', pdfErr);
     }
 
-    if (uploadedPdfData.coverUrl) {
-      const coverBlob = await fetch(uploadedPdfData.coverUrl).then(r => r.blob());
+    if (pdfData.coverUrl) {
+      const coverBlob = await fetch(pdfData.coverUrl).then(r => r.blob());
       const { error: covErr } = await sb.storage.from('course-files')
         .upload(`covers/${courseId}.jpg`, coverBlob, { upsert: true, contentType: 'image/jpeg' });
       if (!covErr) {
@@ -927,21 +897,21 @@ async function submitUpload() {
     console.error('Storage upload error:', error);
   }
 
-  const newCourse = {
-    id: courseId, title, description: '', category: cat, type,
-    contentType: 'pdf', totalPages: uploadedPdfData.numPages,
-    pdfDataUrl: pdfUrl, coverUrl: coverStorageUrl,
-    createdBy: currentUser?.id || null,
-  };
+  return { pdfUrl, coverStorageUrl };
+}
 
-  // Save course to DB
-  const { error: dbErr } = await sb.from('courses').upsert(courseToRow(newCourse));
-  if (dbErr) console.error('Course DB save:', dbErr);
-  courses.unshift(newCourse);
+async function saveCourseToDb(newCourse) {
+  try {
+    const { error: dbErr } = await sb.from('courses').upsert(courseToRow(newCourse));
+    if (dbErr) throw dbErr;
+    return true;
+  } catch (error) {
+    console.error('Course DB save:', error);
+    return false;
+  }
+}
 
-  const wantsLesson = document.getElementById('opt-lesson-checkbox')?.checked ?? false;
-  const extractedText = uploadedPdfData.extractedText;
-
+async function generateQuestionsForUpload(mode, courseId, extractedText, title) {
   if (mode === 'ai') {
     showLoader('Generating questions', 'AI is reading your PDF');
     try {
@@ -963,19 +933,53 @@ async function submitUpload() {
     hideLoader();
     toast('Course uploaded!');
   }
+}
+
+async function generateLessonForUpload(courseId, pageTaggedText, title) {
+  showLoader('Generating interactive lesson', 'AI is building your lesson cards');
+  try {
+    const lesson = await generateLessonAI(pageTaggedText, title);
+    await saveLesson(courseId, lesson);
+    hideLoader();
+    toast(`🪄 Interactive lesson generated! ${lesson.cards.length} cards.`);
+  } catch(err) {
+    console.error('Lesson generation error:', err);
+    hideLoader();
+    toast(`Lesson generation failed: ${err.message || 'unknown error'} — course uploaded without a lesson.`, 'info');
+  }
+}
+
+async function submitUpload() {
+  if (!uploadedPdfData) { toast('Please select a PDF first', 'error'); return; }
+  const { title, cat, mode, wantsLesson } = readUploadForm();
+  const type = 'Free';
+  const courseId = nextCourseId();
+
+  closeModal();
+  showLoader('Uploading PDF', 'Saving to cloud storage');
+
+  const { pdfUrl, coverStorageUrl } = await uploadPdfAndCoverToStorage(courseId, uploadedPdfData);
+
+  const newCourse = {
+    id: courseId, title, description: '', category: cat, type,
+    contentType: 'pdf', totalPages: uploadedPdfData.numPages,
+    pdfDataUrl: pdfUrl, coverUrl: coverStorageUrl,
+    createdBy: currentUser?.id || null,
+  };
+
+  const saved = await saveCourseToDb(newCourse);
+  if (!saved) {
+    hideLoader();
+    toast('Failed to save course — please try again.', 'error');
+    return;
+  }
+  courses.unshift(newCourse);
+
+  const extractedText = uploadedPdfData.extractedText;
+  await generateQuestionsForUpload(mode, courseId, extractedText, title);
 
   if (wantsLesson) {
-    showLoader('Generating interactive lesson', 'AI is building your lesson cards');
-    try {
-      const lesson = await generateLessonAI(uploadedPdfData.pageTaggedText, title);
-      await saveLesson(courseId, lesson);
-      hideLoader();
-      toast(`🪄 Interactive lesson generated! ${lesson.cards.length} cards.`);
-    } catch(err) {
-      console.error('Lesson generation error:', err);
-      hideLoader();
-      toast(`Lesson generation failed: ${err.message || 'unknown error'} — course uploaded without a lesson.`, 'info');
-    }
+    await generateLessonForUpload(courseId, uploadedPdfData.pageTaggedText, title);
   }
 
   renderAdminCourses();
@@ -988,7 +992,7 @@ async function submitUpload() {
 async function generateQuestionsAI(text, courseTitle) {
   const res = await fetch('/api/generate-questions', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ text, courseTitle }),
   });
   if (!res.ok) {
@@ -996,9 +1000,7 @@ async function generateQuestionsAI(text, courseTitle) {
     throw new Error(err.error || `Server error ${res.status}`);
   }
   const data = await res.json();
-  console.log('Gemini raw response:', JSON.stringify(data).slice(0, 500));
   const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  console.log('Gemini text reply:', raw.slice(0, 400));
   // Strip markdown code fences, backtick blocks
   const cleaned = raw
     .replace(/```json/gi, '').replace(/```/g, '')
@@ -1031,7 +1033,7 @@ function repairJsonArray(str) {
 async function generateLessonAI(text, courseTitle) {
   const res = await fetch('/api/generate-lesson', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ text, courseTitle }),
   });
   if (!res.ok) {
@@ -1110,26 +1112,22 @@ function showManualBuilderModal(courseId) {
 
 function renderBuilderModal(courseId) {
   const course = getCourse(courseId);
-  showModal(`
-    <div class="modal" style="max-width:680px" onclick="event.stopPropagation()">
-      <div class="gmodal-header">
-        <h2>Question Builder — ${esc(course?.title || '')}</h2>
-        <button class="gmodal-close" onclick="closeModal()">✕</button>
+  showModal(modalShell({
+    title: `Question Builder — ${esc(course?.title || '')}`,
+    width: 'max-width:680px',
+    bodyStyle: 'max-height:60vh;overflow-y:auto',
+    bodyHTML: `
+      <div id="builder-list">
+        ${builderQuestions.map((question, questionIndex) => builderQuestionHTML(question, questionIndex)).join('')}
       </div>
-      <div class="gmodal-body" style="max-height:60vh;overflow-y:auto">
-        <div id="builder-list">
-          ${builderQuestions.map((question, questionIndex) => builderQuestionHTML(question, questionIndex)).join('')}
-        </div>
-        <div style="display:flex;gap:.5rem;margin-top:.75rem">
-          <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('mc')">+ Multiple Choice</button>
-          <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('tf')">+ True/False</button>
-        </div>
-      </div>
-      <div class="gmodal-footer">
-        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveBuilderQuestions('${courseId}')">Save Questions</button>
-      </div>
-    </div>`);
+      <div style="display:flex;gap:.5rem;margin-top:.75rem">
+        <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('mc')">+ Multiple Choice</button>
+        <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('tf')">+ True/False</button>
+      </div>`,
+    footerHTML: `
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveBuilderQuestions('${courseId}')">Save Questions</button>`,
+  }));
 }
 
 function builderQuestionHTML(question, index) {
@@ -1210,68 +1208,56 @@ function saveBuilderQuestions(courseId) {
 
 // ─── Add Questions to existing course ────────────────────────────────────────
 function showAddQuestionsModal(courseId) {
-  showModal(`
-    <div class="modal" onclick="event.stopPropagation()">
-      <div class="gmodal-header">
-        <h2>${questions[courseId] ? 'Edit Questions' : 'Add Questions'}</h2>
-        <button class="gmodal-close" onclick="closeModal()">✕</button>
-      </div>
-      <div class="gmodal-body">
-        <p style="margin-bottom:1rem;font-size:.9rem;color:var(--text-muted)">How would you like to add questions?</p>
-        ${getCourse(courseId)?.contentType === 'pdf' && getCourse(courseId)?.pdfDataUrl ? `
-        <button class="btn btn-accent" style="width:100%;margin-bottom:.65rem;justify-content:center" onclick="aiGenerateForExisting('${courseId}')">
-          🤖 AI Generate from PDF
-        </button>` : ''}
-        ${['youtube','slides'].includes(getCourse(courseId)?.contentType) ? `
-        <button class="btn btn-accent" style="width:100%;margin-bottom:.65rem;justify-content:center" onclick="aiGenerateForUrl('${courseId}')">
-          🤖 AI Generate from ${getCourse(courseId)?.contentType === 'youtube' ? 'Video' : 'Slides'}
-        </button>` : ''}
-        <button class="btn btn-outline" style="width:100%;margin-bottom:.65rem;justify-content:center" onclick="closeModal();setTimeout(()=>showExcelUploadModal('${courseId}'),200)">
-          📊 Upload Excel
-        </button>
-        <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="closeModal();setTimeout(()=>showManualBuilderModal('${courseId}'),200)">
-          ✍️ Manual Builder
-        </button>
-      </div>
-      <div class="gmodal-footer">
-        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-      </div>
-    </div>`);
+  showModal(modalShell({
+    title: questions[courseId] ? 'Edit Questions' : 'Add Questions',
+    bodyHTML: `
+      <p style="margin-bottom:1rem;font-size:.9rem;color:var(--text-muted)">How would you like to add questions?</p>
+      ${getCourse(courseId)?.contentType === 'pdf' && getCourse(courseId)?.pdfDataUrl ? `
+      <button class="btn btn-accent" style="width:100%;margin-bottom:.65rem;justify-content:center" onclick="aiGenerateForExisting('${courseId}')">
+        🤖 AI Generate from PDF
+      </button>` : ''}
+      ${['youtube','slides'].includes(getCourse(courseId)?.contentType) ? `
+      <button class="btn btn-accent" style="width:100%;margin-bottom:.65rem;justify-content:center" onclick="aiGenerateForUrl('${courseId}')">
+        🤖 AI Generate from ${getCourse(courseId)?.contentType === 'youtube' ? 'Video' : 'Slides'}
+      </button>` : ''}
+      <button class="btn btn-outline" style="width:100%;margin-bottom:.65rem;justify-content:center" onclick="closeModal();setTimeout(()=>showExcelUploadModal('${courseId}'),200)">
+        📊 Upload Excel
+      </button>
+      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="closeModal();setTimeout(()=>showManualBuilderModal('${courseId}'),200)">
+        ✍️ Manual Builder
+      </button>`,
+    footerHTML: `<button class="btn btn-outline" onclick="closeModal()">Cancel</button>`,
+  }));
 }
 
 function showExcelUploadModal(courseId) {
   const course = getCourse(courseId);
-  showModal(`
-    <div class="modal" style="max-width:520px" onclick="event.stopPropagation()">
-      <div class="gmodal-header">
-        <h2>Upload Questions from Excel</h2>
-        <button class="gmodal-close" onclick="closeModal()">✕</button>
-      </div>
-      <div class="gmodal-body">
-        <div class="excel-upload-hint">
-          <strong>Required columns (row 1 = headers):</strong><br/>
-          <code>type</code> · <code>question</code> · <code>option_a</code> · <code>option_b</code> · <code>option_c</code> · <code>option_d</code> · <code>correct</code>
-          <div style="margin-top:.5rem;font-size:.8rem;color:var(--text-muted)">
-            For <strong>mc</strong>: correct = A, B, C, or D &nbsp;·&nbsp;
-            For <strong>tf</strong>: correct = TRUE or FALSE (option columns can be blank)
-          </div>
+  showModal(modalShell({
+    title: 'Upload Questions from Excel',
+    width: 'max-width:520px',
+    bodyHTML: `
+      <div class="excel-upload-hint">
+        <strong>Required columns (row 1 = headers):</strong><br/>
+        <code>type</code> · <code>question</code> · <code>option_a</code> · <code>option_b</code> · <code>option_c</code> · <code>option_d</code> · <code>correct</code>
+        <div style="margin-top:.5rem;font-size:.8rem;color:var(--text-muted)">
+          For <strong>mc</strong>: correct = A, B, C, or D &nbsp;·&nbsp;
+          For <strong>tf</strong>: correct = TRUE or FALSE (option columns can be blank)
         </div>
-        <div style="display:flex;gap:.6rem;margin-bottom:1rem">
-          <button class="btn btn-outline btn-sm" style="flex:1;justify-content:center" onclick="downloadQuestionsTemplate()">⬇ Download Template</button>
-        </div>
-        <div class="excel-drop-zone" id="excel-drop-zone" onclick="document.getElementById('excel-file-input').click()">
-          <div class="excel-drop-icon">📊</div>
-          <div class="excel-drop-label">Click to choose file or drag & drop</div>
-          <div class="excel-drop-sub">.xlsx or .xls</div>
-          <input type="file" id="excel-file-input" accept=".xlsx,.xls" style="display:none" onchange="handleExcelFile(this,'${courseId}')" />
-        </div>
-        <div id="excel-preview" style="display:none;margin-top:1rem"></div>
       </div>
-      <div class="gmodal-footer">
-        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" id="excel-save-btn" style="display:none" onclick="saveExcelQuestions('${courseId}')">Save Questions</button>
+      <div style="display:flex;gap:.6rem;margin-bottom:1rem">
+        <button class="btn btn-outline btn-sm" style="flex:1;justify-content:center" onclick="downloadQuestionsTemplate()">⬇ Download Template</button>
       </div>
-    </div>`);
+      <div class="excel-drop-zone" id="excel-drop-zone" onclick="document.getElementById('excel-file-input').click()">
+        <div class="excel-drop-icon">📊</div>
+        <div class="excel-drop-label">Click to choose file or drag & drop</div>
+        <div class="excel-drop-sub">.xlsx or .xls</div>
+        <input type="file" id="excel-file-input" accept=".xlsx,.xls" style="display:none" onchange="handleExcelFile(this,'${courseId}')" />
+      </div>
+      <div id="excel-preview" style="display:none;margin-top:1rem"></div>`,
+    footerHTML: `
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="excel-save-btn" style="display:none" onclick="saveExcelQuestions('${courseId}')">Save Questions</button>`,
+  }));
 
   // drag & drop support
   setTimeout(() => {
@@ -1449,7 +1435,7 @@ async function aiGenerateForUrl(courseId) {
       : { type: 'slides', presentationId };
     if (!body.videoId && !body.presentationId) throw new Error('No video ID or presentation ID found on this course.');
     const contentRes = await fetch('/api/fetch-content', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify(body),
     });
     const contentData = await contentRes.json();
@@ -1475,25 +1461,20 @@ function showPasteContentModal(courseId, courseTitle, contentType, errorMsg) {
   const hint = contentType === 'youtube'
     ? 'On YouTube: open the video, click the <strong>⋯ More</strong> button → <strong>Show transcript</strong>, then copy and paste it here.'
     : 'In Google Slides: go to <strong>File → Share → Publish to web</strong>, then try AI generate again. Or paste the slide text below.';
-  showModal(`
-    <div class="modal" style="max-width:560px" onclick="event.stopPropagation()">
-      <div class="gmodal-header">
-        <h2>Paste Content for AI Questions</h2>
-        <button class="gmodal-close" onclick="closeModal()">✕</button>
-      </div>
-      <div class="gmodal-body">
-        ${errorMsg ? `<div style="background:#fff3e0;border:1px solid #ffb74d;border-radius:8px;padding:.75rem 1rem;font-size:.83rem;color:#e65100;margin-bottom:1rem">${esc(errorMsg)}</div>` : ''}
-        <p style="font-size:.88rem;color:var(--text-muted);margin-bottom:.75rem" id="paste-hint">${hint}</p>
-        <div class="form-group">
-          <label class="form-label">Course content / transcript *</label>
-          <textarea id="paste-text" class="form-textarea" rows="8" placeholder="Paste the video transcript or slide text here…" style="font-size:.82rem"></textarea>
-        </div>
-      </div>
-      <div class="gmodal-footer">
-        <button class="btn btn-outline" onclick="closeModal();setTimeout(()=>showManualBuilderModal('${courseId}'),200)">✍️ Manual Builder</button>
-        <button class="btn btn-primary" onclick="generateFromPastedText('${courseId}','${esc(courseTitle)}')">🤖 Generate Questions</button>
-      </div>
-    </div>`);
+  showModal(modalShell({
+    title: 'Paste Content for AI Questions',
+    width: 'max-width:560px',
+    bodyHTML: `
+      ${errorMsg ? `<div style="background:#fff3e0;border:1px solid #ffb74d;border-radius:8px;padding:.75rem 1rem;font-size:.83rem;color:var(--status-warning);margin-bottom:1rem">${esc(errorMsg)}</div>` : ''}
+      <p style="font-size:.88rem;color:var(--text-muted);margin-bottom:.75rem" id="paste-hint">${hint}</p>
+      <div class="form-group">
+        <label class="form-label">Course content / transcript *</label>
+        <textarea id="paste-text" class="form-textarea" rows="8" placeholder="Paste the video transcript or slide text here…" style="font-size:.82rem"></textarea>
+      </div>`,
+    footerHTML: `
+      <button class="btn btn-outline" onclick="closeModal();setTimeout(()=>showManualBuilderModal('${courseId}'),200)">✍️ Manual Builder</button>
+      <button class="btn btn-primary" onclick="generateFromPastedText('${courseId}','${esc(courseTitle)}')">🤖 Generate Questions</button>`,
+  }));
 }
 
 async function generateFromPastedText(courseId, courseTitle) {

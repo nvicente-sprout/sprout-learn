@@ -1,6 +1,7 @@
 ﻿// ─── Router ───────────────────────────────────────────────────────────────────
 // ─── SCORM 1.2 postMessage Bridge ─────────────────────────────────────────────
 window.addEventListener('message', e => {
+  if (e.origin !== window.location.origin) return;
   if (!e.data || e.data.type !== 'scorm12' || !viewerCourseId || !currentUser) return;
   const { action, element: el, value: val } = e.data;
   if (action === 'set') {
@@ -297,17 +298,15 @@ function openReportsUserPanel(userId) {
     const course = getCourse(cid);
     const prog = getProgress(userId, cid);
     if (!course) return '';
-    const statusColor = prog.completed ? '#2e7d32' : '#f57c00';
-    const statusLabel = prog.completed ? '✅ Completed' : prog.currentSlide > 0 ? '🕐 In Progress' : '○ Not Started';
-    const pct = prog.completed ? 100 : Math.min(80, course.totalPages ? Math.round((prog.currentSlide / course.totalPages) * 100) : 0);
+    const { color: statusColor, label: statusLabel, pct } = progressStatus(prog, course);
     return `<div class="sp-course-row">
       ${course.coverUrl ? `<img src="${course.coverUrl}" class="sp-course-thumb"/>` : `<div class="sp-course-thumb sp-course-thumb--placeholder">${CAT_EMOJI[course.category]||'📚'}</div>`}
       <div style="flex:1;min-width:0">
         <div class="sp-course-title">${esc(course.title)}</div>
         <div style="font-size:.76rem;color:var(--text-muted);margin-bottom:.3rem">${esc(course.category)}</div>
         <div style="display:flex;align-items:center;gap:.5rem">
-          <div style="flex:1;background:#e8f5e9;border-radius:99px;height:6px;overflow:hidden">
-            <div style="width:${pct}%;height:100%;background:${prog.completed?'#2e7d32':'#4a9e4a'};border-radius:99px"></div>
+          <div class="progress-bar-wrap progress-bar-wrap--md" style="flex:1">
+            <div class="progress-bar" style="width:${pct}%;background:${prog.completed?'var(--status-success)':'#4a9e4a'}"></div>
           </div>
           <span style="font-size:.74rem;color:var(--text-muted);white-space:nowrap">${pct}%</span>
         </div>
@@ -328,7 +327,7 @@ function openReportsUserPanel(userId) {
           <div class="sp-subtitle">${esc(teamName)}</div>
         </div>
       </div>
-      <button class="sp-close" onclick="closeSidePanel()">✕</button>
+      <button class="sp-close" onclick="closeSidePanel()" aria-label="Close">✕</button>
     </div>
     <div class="sp-stats">
       <div class="sp-stat"><span>${assignedCids.length}</span>Assigned</div>
@@ -350,22 +349,20 @@ function openReportsCoursePanel(courseId) {
   const scores         = assignedUsers.map(user => getProgress(user.id, courseId)).filter(progressEntry => progressEntry.score !== null && progressEntry.score !== undefined).map(progressEntry => progressEntry.score);
   const avgScore       = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : null;
   const passRate       = assignedUsers.length ? Math.round((completedUsers.length / assignedUsers.length) * 100) : 0;
-  const barColor       = passRate >= 70 ? '#2e7d32' : passRate >= 40 ? '#f57c00' : '#c62828';
+  const barColor       = passRate >= 70 ? 'var(--status-success)' : passRate >= 40 ? 'var(--status-warning)' : 'var(--status-danger)';
 
   const rows = assignedUsers.map(user => {
     const progressEntry = getProgress(user.id, courseId);
     const teamName = allTeams.find(team => team.id === user.teamId)?.name || '—';
-    const statusColor = progressEntry.completed ? '#2e7d32' : '#f57c00';
-    const statusLabel = progressEntry.completed ? '✅ Completed' : progressEntry.currentSlide > 0 ? '🕐 In Progress' : '○ Not Started';
-    const pct = progressEntry.completed ? 100 : Math.min(80, course.totalPages ? Math.round((progressEntry.currentSlide / course.totalPages) * 100) : 0);
+    const { color: statusColor, label: statusLabel, pct } = progressStatus(progressEntry, course);
     return `<div class="sp-course-row">
       ${avatarHTML(user, 36)}
       <div style="flex:1;min-width:0">
         <div class="sp-course-title">${esc(user.name)}</div>
         <div style="font-size:.76rem;color:var(--text-muted);margin-bottom:.3rem">${esc(teamName)}</div>
         <div style="display:flex;align-items:center;gap:.5rem">
-          <div style="flex:1;background:#e8f5e9;border-radius:99px;height:6px;overflow:hidden">
-            <div style="width:${pct}%;height:100%;background:${progressEntry.completed?'#2e7d32':'#4a9e4a'};border-radius:99px"></div>
+          <div class="progress-bar-wrap progress-bar-wrap--md" style="flex:1">
+            <div class="progress-bar" style="width:${pct}%;background:${progressEntry.completed?'var(--status-success)':'#4a9e4a'}"></div>
           </div>
           <span style="font-size:.74rem;color:var(--text-muted);white-space:nowrap">${pct}%</span>
         </div>
@@ -386,7 +383,7 @@ function openReportsCoursePanel(courseId) {
           <div class="sp-subtitle">${esc(course.category)}</div>
         </div>
       </div>
-      <button class="sp-close" onclick="closeSidePanel()">✕</button>
+      <button class="sp-close" onclick="closeSidePanel()" aria-label="Close">✕</button>
     </div>
     <div class="sp-stats">
       <div class="sp-stat"><span>${assignedUsers.length}</span>Assigned</div>

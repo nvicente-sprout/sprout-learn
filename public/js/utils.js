@@ -145,6 +145,14 @@ function setLessonCard(userId, courseId, cardIndex) {
   sb.from('progress').upsert({ user_id: userId, course_id: courseId, lesson_card: cardIndex })
     .then(({ error }) => { if (error) console.error('Lesson card progress save:', error); });
 }
+// Shared status color/label/percent computation for progress rows (learner reports,
+// team progress panels) — the 4 call sites render different row/card markup around it.
+function progressStatus(prog, course) {
+  const color = prog.completed ? 'var(--status-success)' : 'var(--status-warning)';
+  const label = prog.completed ? '✅ Completed' : prog.currentSlide > 0 ? '🕐 In Progress' : '○ Not Started';
+  const pct = prog.completed ? 100 : Math.min(80, course.totalPages ? Math.round((prog.currentSlide / course.totalPages) * 100) : 0);
+  return { color, label, pct };
+}
 function getUserAssignments(userId) { return assignments[userId] || []; }
 function isAssigned(userId, courseId) { return getUserAssignments(userId).includes(courseId); }
 function userCompletions(userId) {
@@ -261,6 +269,21 @@ function showModal(html) {
 }
 function closeModal() {
   document.getElementById('modal-root').innerHTML = '';
+}
+// Shared modal chrome (header + title + close button, optional footer/custom width/body style)
+// so each modal call site only has to define its own body and footer content.
+function modalShell({ title, bodyHTML, footerHTML = '', width = '', bodyStyle = '' }) {
+  return `
+    <div class="modal"${width ? ` style="${width}"` : ''} onclick="event.stopPropagation()">
+      <div class="gmodal-header">
+        <h2>${title}</h2>
+        <button class="gmodal-close" onclick="closeModal()" aria-label="Close">✕</button>
+      </div>
+      <div class="gmodal-body"${bodyStyle ? ` style="${bodyStyle}"` : ''}>
+        ${bodyHTML}
+      </div>
+      ${footerHTML ? `<div class="gmodal-footer">${footerHTML}</div>` : ''}
+    </div>`;
 }
 function handleOverlayClick(event) {
   if (event.target.id === 'modal-overlay-el') closeModal();

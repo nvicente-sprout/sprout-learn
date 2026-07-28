@@ -1,14 +1,23 @@
 import { config } from './config.js';
+import { applyCors, verifyAuthUser } from './_auth.js';
+
+const UPSTREAM_TIMEOUT_MS = 10000;
 
 // Vercel serverless function — proxies Gemini API so the key stays server-side
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  applyCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const apiKey = config.geminiApiKey;
+  const user = await verifyAuthUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+  let apiKey;
+  try {
+    apiKey = config.geminiApiKey;
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
 
   const { text, courseTitle } = req.body || {};
   if (!text) return res.status(400).json({ error: 'text is required' });
@@ -17,14 +26,16 @@ export default async function handler(req, res) {
   const preferred = ['gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash','gemini-2.5-pro','gemini-1.5-pro','gemini-pro'];
   let modelsToTry = preferred;
   try {
-    const modelsRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    const modelsRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, {
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
     const modelsData = await modelsRes.json();
     const available = (modelsData.models || [])
       .filter(model => model.supportedGenerationMethods?.includes('generateContent'))
       .map(model => model.name.replace('models/', ''));
     const ordered = preferred.filter(preferredModel => available.includes(preferredModel));
     if (ordered.length) modelsToTry = ordered;
-  } catch (error) { /* use defaults */ }
+  } catch { /* use defaults */ }
 
   const prompt = `You are an instructional designer turning training content from "${courseTitle || 'this course'}" into a short interactive lesson made of cards.
 
@@ -56,6 +67,7 @@ Training content:
 ${String(text).slice(0, 6000)}`;
 
   let lastError = 'All models failed';
+  let hadQuotaError = false;
   for (const model of modelsToTry) {
     try {
       const geminiRes = await fetch(
@@ -67,9 +79,11 @@ ${String(text).slice(0, 6000)}`;
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: { temperature: 0.5, maxOutputTokens: 4096 },
           }),
+          signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
         }
       );
       if (geminiRes.status === 429 || geminiRes.status === 503) {
+        hadQuotaError = true;
         const err = await geminiRes.json().catch(() => ({}));
         lastError = err?.error?.message || `${model} quota exceeded`;
         continue; // try next model
@@ -81,8 +95,11 @@ ${String(text).slice(0, 6000)}`;
       const data = await geminiRes.json();
       return res.status(200).json(data);
     } catch (error) {
-      lastError = error.message;
+      lastError = error.name === 'TimeoutError' ? `${model} timed out` : error.message;
     }
   }
-  return res.status(429).json({ error: `Quota exceeded on all models. Try again later. (${lastError})` });
+  if (hadQuotaError) {
+    return res.status(429).json({ error: `Quota exceeded on all models. Try again later. (${lastError})` });
+  }
+  return res.status(502).json({ error: `Could not reach Gemini on any model. (${lastError})` });
 }
