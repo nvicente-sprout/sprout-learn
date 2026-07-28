@@ -979,6 +979,12 @@ async function submitUpload() {
   await generateQuestionsForUpload(mode, courseId, extractedText, title);
 
   if (wantsLesson) {
+    if (mode === 'ai') {
+      // Brief pause so lesson generation's Gemini call doesn't immediately collide with the
+      // per-minute rate limit the AI question generation above just used.
+      showLoader('Preparing lesson generation', 'Avoiding AI rate limit…');
+      await new Promise(resolve => setTimeout(resolve, 6000));
+    }
     await generateLessonForUpload(courseId, uploadedPdfData.pageTaggedText, title);
   }
 

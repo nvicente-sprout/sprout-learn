@@ -23,9 +23,10 @@ export default async function handler(req, res) {
   if (!text) return res.status(400).json({ error: 'text is required' });
 
   // Build ordered model list — fetch available ones, fall back to defaults
-  // Free-tier models only — pro models (2.5-pro, 1.5-pro) return quota limit:0 on the free
-  // plan and just waste a fallback attempt, so they're deliberately excluded here.
-  const preferred = ['gemini-2.5-flash','gemini-2.0-flash','gemini-2.0-flash-lite','gemini-1.5-flash','gemini-1.5-flash-8b'];
+  // Free-tier models only. Pro models (2.5-pro, 1.5-pro) and "-lite" variants (2.5-flash-lite,
+  // 2.0-flash-lite) confirmed to return quota limit:0 on this account/plan — excluded so the
+  // fallback chain doesn't waste an attempt on a model with zero real quota.
+  const preferred = ['gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash','gemini-1.5-flash-8b'];
   let modelsToTry = preferred;
   try {
     const modelsRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, {
@@ -49,6 +50,7 @@ ${String(text).slice(0, 4000)}`;
 
   let lastError = 'All models failed';
   let hadQuotaError = false;
+  let retryDelay = null;
   for (const model of modelsToTry) {
     try {
       const geminiRes = await fetch(
@@ -67,8 +69,11 @@ ${String(text).slice(0, 4000)}`;
         const data = await geminiRes.json();
         return res.status(200).json(data);
       }
-      if (geminiRes.status === 429 || geminiRes.status === 503) hadQuotaError = true;
       const err = await geminiRes.json().catch(() => ({}));
+      if (geminiRes.status === 429 || geminiRes.status === 503) {
+        hadQuotaError = true;
+        retryDelay = err?.error?.details?.find(d => d['@type']?.includes('RetryInfo'))?.retryDelay || retryDelay;
+      }
       lastError = err?.error?.message || geminiRes.statusText;
       // Any failure (quota, deprecated/unavailable model, bad request, etc.) — try the next
       // model rather than aborting the whole fallback chain on the first non-quota error.
@@ -77,7 +82,8 @@ ${String(text).slice(0, 4000)}`;
     }
   }
   if (hadQuotaError) {
-    return res.status(429).json({ error: `Quota exceeded on all models. Try again later. (${lastError})` });
+    const waitMsg = retryDelay ? ` Please wait ${retryDelay} and try again.` : ' Try again later.';
+    return res.status(429).json({ error: `Quota exceeded on all models.${waitMsg} (${lastError})` });
   }
   return res.status(502).json({ error: `Could not reach Gemini on any model. (${lastError})` });
 }
