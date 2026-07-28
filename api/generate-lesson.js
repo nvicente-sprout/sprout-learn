@@ -25,7 +25,7 @@ export default async function handler(req, res) {
   // Build ordered model list — fetch available ones, fall back to defaults
   // Free-tier models only — pro models (2.5-pro, 1.5-pro) return quota limit:0 on the free
   // plan and just waste a fallback attempt, so they're deliberately excluded here.
-  const preferred = ['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.0-flash','gemini-2.0-flash-lite','gemini-1.5-flash','gemini-1.5-flash-8b'];
+  const preferred = ['gemini-2.5-flash','gemini-2.0-flash','gemini-2.0-flash-lite','gemini-1.5-flash','gemini-1.5-flash-8b'];
   let modelsToTry = preferred;
   try {
     const modelsRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, {
@@ -84,18 +84,15 @@ ${String(text).slice(0, 6000)}`;
           signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
         }
       );
-      if (geminiRes.status === 429 || geminiRes.status === 503) {
-        hadQuotaError = true;
-        const err = await geminiRes.json().catch(() => ({}));
-        lastError = err?.error?.message || `${model} quota exceeded`;
-        continue; // try next model
+      if (geminiRes.ok) {
+        const data = await geminiRes.json();
+        return res.status(200).json(data);
       }
-      if (!geminiRes.ok) {
-        const err = await geminiRes.json().catch(() => ({}));
-        return res.status(geminiRes.status).json({ error: err?.error?.message || geminiRes.statusText });
-      }
-      const data = await geminiRes.json();
-      return res.status(200).json(data);
+      if (geminiRes.status === 429 || geminiRes.status === 503) hadQuotaError = true;
+      const err = await geminiRes.json().catch(() => ({}));
+      lastError = err?.error?.message || geminiRes.statusText;
+      // Any failure (quota, deprecated/unavailable model, bad request, etc.) — try the next
+      // model rather than aborting the whole fallback chain on the first non-quota error.
     } catch (error) {
       lastError = error.name === 'TimeoutError' ? `${model} timed out` : error.message;
     }
