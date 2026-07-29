@@ -4,6 +4,28 @@ async function authHeaders() {
   return session ? { Authorization: `Bearer ${session.access_token}` } : {};
 }
 
+// ─── Gemini Quota Retry ───────────────────────────────────────────────────────
+// api/generate-questions.js and api/generate-lesson.js embed Google's own reported
+// cooldown in the error message (e.g. "Please wait 32s and try again.") when every
+// model hits a 429. Instead of guessing a fixed pause, wait exactly that long and
+// retry once — a second failure is surfaced to the caller as-is.
+function parseRetryDelaySeconds(message) {
+  const match = String(message || '').match(/wait\s+(\d+(?:\.\d+)?)s/i);
+  return match ? parseFloat(match[1]) : null;
+}
+async function withQuotaRetry(fn, onWaiting) {
+  try {
+    return await fn();
+  } catch (err) {
+    const waitSecs = parseRetryDelaySeconds(err.message);
+    if (waitSecs == null) throw err;
+    const waitSecsRounded = Math.ceil(waitSecs) + 2; // small buffer past Google's reported cooldown
+    onWaiting?.(waitSecsRounded);
+    await new Promise(resolve => setTimeout(resolve, waitSecsRounded * 1000));
+    return await fn();
+  }
+}
+
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
 function renderAdminDashboard() {
   setTitle('Dashboard');
@@ -159,7 +181,10 @@ async function generateLessonForExisting(courseId) {
       const pageText = content.items.map(item => item.str).join(' ');
       pageTaggedText += `[Page ${pageNum}]\n${pageText}\n\n`;
     }
-    const lesson = await generateLessonAI(pageTaggedText, course.title);
+    const lesson = await withQuotaRetry(
+      () => generateLessonAI(pageTaggedText, course.title),
+      waitSecs => showLoader('Generating interactive lesson', `Rate limited — retrying in ${waitSecs}s…`)
+    );
     await saveLesson(courseId, lesson);
     hideLoader();
     toast(`🪄 Interactive lesson generated! ${lesson.cards.length} cards.`);
@@ -915,7 +940,10 @@ async function generateQuestionsForUpload(mode, courseId, extractedText, title) 
   if (mode === 'ai') {
     showLoader('Generating questions', 'AI is reading your PDF');
     try {
-      const qs = await generateQuestionsAI(extractedText, title);
+      const qs = await withQuotaRetry(
+        () => generateQuestionsAI(extractedText, title),
+        waitSecs => showLoader('Generating questions', `Rate limited — retrying in ${waitSecs}s…`)
+      );
       questions[courseId] = qs;
       await sb.from('questions').upsert({ course_id: courseId, questions_json: qs });
       hideLoader();
@@ -938,7 +966,10 @@ async function generateQuestionsForUpload(mode, courseId, extractedText, title) 
 async function generateLessonForUpload(courseId, pageTaggedText, title) {
   showLoader('Generating interactive lesson', 'AI is building your lesson cards');
   try {
-    const lesson = await generateLessonAI(pageTaggedText, title);
+    const lesson = await withQuotaRetry(
+      () => generateLessonAI(pageTaggedText, title),
+      waitSecs => showLoader('Generating interactive lesson', `Rate limited — retrying in ${waitSecs}s…`)
+    );
     await saveLesson(courseId, lesson);
     hideLoader();
     toast(`🪄 Interactive lesson generated! ${lesson.cards.length} cards.`);
@@ -979,12 +1010,6 @@ async function submitUpload() {
   await generateQuestionsForUpload(mode, courseId, extractedText, title);
 
   if (wantsLesson) {
-    if (mode === 'ai') {
-      // Brief pause so lesson generation's Gemini call doesn't immediately collide with the
-      // per-minute rate limit the AI question generation above just used.
-      showLoader('Preparing lesson generation', 'Avoiding AI rate limit…');
-      await new Promise(resolve => setTimeout(resolve, 6000));
-    }
     await generateLessonForUpload(courseId, uploadedPdfData.pageTaggedText, title);
   }
 
@@ -1415,7 +1440,10 @@ async function aiGenerateForExisting(courseId) {
       const content = await page.getTextContent();
       text += content.items.map(item => item.str).join(' ') + '\n';
     }
-    const qs = await generateQuestionsAI(text, course.title);
+    const qs = await withQuotaRetry(
+      () => generateQuestionsAI(text, course.title),
+      waitSecs => showLoader('Generating questions', `Rate limited — retrying in ${waitSecs}s…`)
+    );
     questions[courseId] = qs;
     await sb.from('questions').upsert({ course_id: courseId, questions_json: qs });
     hideLoader();
@@ -1450,7 +1478,10 @@ async function aiGenerateForUrl(courseId) {
       showPasteContentModal(courseId, course.title, course.contentType, contentData.error);
       return;
     }
-    const qs = await generateQuestionsAI(contentData.text, course.title);
+    const qs = await withQuotaRetry(
+      () => generateQuestionsAI(contentData.text, course.title),
+      waitSecs => showLoader('Generating questions', `Rate limited — retrying in ${waitSecs}s…`)
+    );
     questions[courseId] = qs;
     await sb.from('questions').upsert({ course_id: courseId, questions_json: qs });
     hideLoader();
@@ -1489,7 +1520,10 @@ async function generateFromPastedText(courseId, courseTitle) {
   closeModal();
   showLoader('Generating questions', 'AI is reading your content');
   try {
-    const qs = await generateQuestionsAI(text, courseTitle);
+    const qs = await withQuotaRetry(
+      () => generateQuestionsAI(text, courseTitle),
+      waitSecs => showLoader('Generating questions', `Rate limited — retrying in ${waitSecs}s…`)
+    );
     questions[courseId] = qs;
     await sb.from('questions').upsert({ course_id: courseId, questions_json: qs });
     hideLoader();
