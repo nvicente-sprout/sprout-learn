@@ -23,10 +23,10 @@ export default async function handler(req, res) {
   if (!text) return res.status(400).json({ error: 'text is required' });
 
   // Build ordered model list — fetch available ones, fall back to defaults
-  // Free-tier models only. Pro models (2.5-pro, 1.5-pro) and "-lite" variants (2.5-flash-lite,
-  // 2.0-flash-lite) confirmed to return quota limit:0 on this account/plan — excluded so the
-  // fallback chain doesn't waste an attempt on a model with zero real quota.
-  const preferred = ['gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash','gemini-1.5-flash-8b'];
+  // gemini-1.5-flash and gemini-1.5-flash-8b confirmed retired (404) as of 2026-08-02 —
+  // replaced with gemini-2.0-flash-lite and gemini-2.5-pro, which are live but currently
+  // over free-tier quota; kept as fallbacks since quota resets periodically.
+  const preferred = ['gemini-2.5-flash','gemini-2.0-flash','gemini-2.0-flash-lite','gemini-2.5-pro'];
   let modelsToTry = preferred;
   try {
     const modelsRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, {
