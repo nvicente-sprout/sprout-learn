@@ -358,6 +358,7 @@ img { max-width: 100%; }
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .course-card-meta { font-size: .78rem; color: var(--text-light); }
 .course-card-publisher { font-size: .72rem; color: var(--text-muted); font-style: italic; margin-top: .1rem; }
+.course-teaser-audio { width: 100%; height: 32px; margin-top: .5rem; }
 .progress-bar-wrap { background: var(--bg-alt); border-radius: 99px; height: 5px; overflow: hidden; }
 .progress-bar-wrap--md { height: 6px; }
 .progress-bar-wrap--lg { height: 7px; }

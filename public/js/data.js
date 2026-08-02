@@ -9,6 +9,7 @@ function courseFromRow(row) {
     scormUrl: row.content_type === 'scorm' ? (row.scorm_url || null) : null,
     htmlUrl:  row.content_type === 'html'  ? (row.scorm_url || null) : null,
     createdBy: row.created_by || null,
+    teaserAudioUrl: row.teaser_audio_url || null,
   };
 }
 function courseToRow(course) {
@@ -18,7 +19,7 @@ function courseToRow(course) {
     total_pages: course.totalPages || 0, pdf_url: course.pdfDataUrl || null,
     cover_url: course.coverUrl || null, youtube_id: course.youtubeId || null,
     slides_url: course.slidesUrl || null, scorm_url: course.scormUrl || course.htmlUrl || null,
-    created_by: course.createdBy || null,
+    created_by: course.createdBy || null, teaser_audio_url: course.teaserAudioUrl || null,
   };
 }
 

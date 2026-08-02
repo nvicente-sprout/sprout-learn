@@ -151,6 +151,7 @@ function adminCourseCard(course) {
         ${contentBadge(course.contentType)}
         ${qs ? `<span class="badge badge-q">${qs.length} Q</span>` : ''}
         ${hasLesson ? `<span class="badge badge-lesson">🪄 Lesson</span>` : ''}
+        ${course.teaserAudioUrl ? `<span class="badge badge-lesson">🔊 Teaser</span>` : ''}
       </div>
       <div class="course-card-title">${esc(course.title)}</div>
       <div class="course-card-desc">${esc(course.description)}</div>
@@ -161,6 +162,7 @@ function adminCourseCard(course) {
         <button class="btn btn-outline btn-sm" onclick="showAssignModal('${course.id}')">👥 Assign</button>
         <button class="btn btn-outline btn-sm" onclick="${qs ? `showManualBuilderModal('${course.id}')` : `showAddQuestionsModal('${course.id}')`}">${qs ? '✏️ Edit Questions' : '+ Questions'}</button>
         ${isPdf ? `<button class="btn btn-outline btn-sm" onclick="generateLessonForExisting('${course.id}')">${hasLesson ? '🪄 Regenerate Lesson' : '🪄 Generate Lesson'}</button>` : ''}
+        ${isPdf ? `<button class="btn btn-outline btn-sm" onclick="generateTeaserForExisting('${course.id}')">${course.teaserAudioUrl ? '🔊 Regenerate Teaser' : '🔊 Generate Teaser'}</button>` : ''}
         <button class="btn btn-danger btn-sm" onclick="deleteCourse('${course.id}')" aria-label="Delete course ${esc(course.title)}">🗑</button>
       </div>
     </div>
@@ -193,6 +195,36 @@ async function generateLessonForExisting(courseId) {
     console.error('Lesson generation error:', err);
     hideLoader();
     toast(`Lesson generation failed: ${err.message || 'check console'}`, 'error');
+  }
+}
+
+async function generateTeaserForExisting(courseId) {
+  const course = getCourse(courseId);
+  if (!course?.pdfDataUrl) { toast('No PDF attached', 'error'); return; }
+  showLoader('Generating audio teaser', 'AI is writing and recording your teaser');
+  try {
+    const arrayBuffer = await (await fetch(course.pdfDataUrl)).arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let pageTaggedText = '';
+    for (let pageNum = 1; pageNum <= Math.min(pdf.numPages, 30); pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const content = await page.getTextContent();
+      const pageText = content.items.map(item => item.str).join(' ');
+      pageTaggedText += `[Page ${pageNum}]\n${pageText}\n\n`;
+    }
+    const { audioBase64, mimeType } = await withQuotaRetry(
+      () => generateAudioTeaserAI(pageTaggedText, course.title),
+      waitSecs => showLoader('Generating audio teaser', `Rate limited — retrying in ${waitSecs}s…`)
+    );
+    const teaserUrl = await saveTeaserAudio(courseId, audioBase64, mimeType);
+    course.teaserAudioUrl = teaserUrl;
+    hideLoader();
+    toast('🔊 Audio teaser generated!');
+    renderAdminCourses();
+  } catch(err) {
+    console.error('Teaser generation error:', err);
+    hideLoader();
+    toast(`Teaser generation failed: ${err.message || 'check console'}`, 'error');
   }
 }
 
@@ -1124,6 +1156,38 @@ async function saveLesson(courseId, lesson) {
     throw new Error('Lesson generated but failed to save: ' + error.message);
   }
   lessons[courseId] = lesson;
+}
+
+async function generateAudioTeaserAI(text, courseTitle) {
+  const res = await fetch('/api/generate-audio-teaser', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ text, courseTitle }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Server error ${res.status}`);
+  }
+  return res.json(); // { audioBase64, mimeType, script }
+}
+
+async function saveTeaserAudio(courseId, audioBase64, mimeType) {
+  const byteChars = atob(audioBase64);
+  const bytes = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mimeType || 'audio/wav' });
+
+  const path = `audio-teasers/${courseId}.wav`;
+  const { error: upErr } = await sb.storage.from('course-files')
+    .upload(path, blob, { upsert: true, contentType: mimeType || 'audio/wav' });
+  if (upErr) throw upErr;
+
+  const { data: { publicUrl } } = sb.storage.from('course-files').getPublicUrl(path);
+  const teaserUrl = publicUrl + '?t=' + Date.now(); // cache-bust on regenerate
+
+  const { error: dbErr } = await sb.from('courses').update({ teaser_audio_url: teaserUrl }).eq('id', courseId);
+  if (dbErr) throw dbErr;
+  return teaserUrl;
 }
 
 const FALLBACK_QUESTIONS = [

@@ -31,6 +31,7 @@ Static SPA (`public/`) + Vercel serverless functions (`api/`).
 **API** (`api/`): Vercel serverless ES modules.
 - `api/generate-questions.js` — proxies Gemini API; tries models in preference order, falls back on 429/503
 - `api/generate-lesson.js` — same model-fallback chain, generates an interactive lesson (`{cards:[...]}`) from a course's extracted text for the Interactive Lessons feature
+- `api/generate-audio-teaser.js` — two-step Gemini call: condenses course text into a ~110-120 word script, then generates speech audio (Gemini TTS returns raw PCM; wrapped into a WAV before returning to the client). Has its own `maxDuration: 30` (Vercel function config) instead of the 10s `UPSTREAM_TIMEOUT_MS` the other two routes use, since audio generation is slower.
 - `api/fetch-content.js` — fetches YouTube transcripts and Google Slides text server-side
 - `api/config.js` — single env reader; `required()` throws on missing vars (no silent defaults)
 

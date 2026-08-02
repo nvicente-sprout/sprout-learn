@@ -272,6 +272,7 @@ function learnerCourseCard(course, uid, cardIndex = 0) {
       <div class="course-card-desc">${esc(course.description)}</div>
       <div class="course-card-meta">${CAT_EMOJI[course.category]||'📚'} ${esc(course.category)}</div>
       ${course.createdBy ? `<div class="course-card-publisher">by ${esc(allUsers.find(user => user.id === course.createdBy)?.name || 'Unknown')}</div>` : ''}
+      ${course.teaserAudioUrl ? `<audio class="course-teaser-audio" controls preload="none" src="${course.teaserAudioUrl}">Your browser does not support audio playback.</audio>` : ''}
       ${assigned && course.totalPages ? `<div class="progress-bar-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>` : ''}
       <div class="course-card-actions">
         ${assigned ? `<a href="#/course/${course.id}" class="btn btn-primary btn-sm">${label}</a>` : `<span class="btn btn-outline btn-sm" style="opacity:.6;cursor:default">Not Assigned</span>`}
