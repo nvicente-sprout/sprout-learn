@@ -23,10 +23,12 @@ export default async function handler(req, res) {
   if (!text) return res.status(400).json({ error: 'text is required' });
 
   // Build ordered model list — fetch available ones, fall back to defaults
-  // gemini-1.5-flash and gemini-1.5-flash-8b confirmed retired (404) as of 2026-08-02 —
-  // replaced with gemini-2.0-flash-lite and gemini-2.5-pro, which are live but currently
-  // over free-tier quota; kept as fallbacks since quota resets periodically.
-  const preferred = ['gemini-2.5-flash','gemini-2.0-flash','gemini-2.0-flash-lite','gemini-2.5-pro'];
+  // Verified live on this key as of 2026-08-02 by running the real generation prompt end-to-end
+  // (not just a ping) — gemini-2.0-flash, gemini-2.5-pro, and the retired gemini-1.5-* models
+  // are excluded (limit:0 / 404). gemini-flash-latest/gemini-flash-lite-latest are Google's
+  // auto-updating aliases, so this list shouldn't go stale again the way dated model names do.
+  // flash-lite-latest goes first: same output quality, ~4x faster, safely under UPSTREAM_TIMEOUT_MS.
+  const preferred = ['gemini-flash-lite-latest','gemini-2.5-flash','gemini-3.5-flash','gemini-flash-latest'];
   let modelsToTry = preferred;
   try {
     const modelsRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, {
